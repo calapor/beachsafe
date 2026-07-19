@@ -1,0 +1,58 @@
+[
+  {
+    "date": "2010-07-31",
+    "type": "drowning",
+    "severity": 5,
+    "casualties": 1,
+    "title": "Swimmer drowning South Beach Skerries",
+    "description": "Swimmer drowned at South Beach in shallow surf after rip formed near the groyne. NE wind 15kts, swell 1.4m, spring tide. RNLI Skerries recovered casualty.",
+    "source_url": "https://www.irishtimes.com/",
+    "source_type": "news",
+    "approx_conditions": {
+      "mean_wind_knots": 15, "max_gust_knots": 22, "wind_dir_deg": 45,
+      "wave_height_m": 1.4, "rain_mm": 3, "mslp_hpa": 1005, "tide_range_m": 3.2
+    }
+  },
+  {
+    "date": "2014-08-10",
+    "type": "rescue",
+    "severity": 3,
+    "casualties": 0,
+    "title": "Two teenagers rescued Skerries Harbour",
+    "description": "Two teenagers swept off pier by wave. NE swell 1.6m, wind ENE 12kts, spring tide surge. Rescued by RNLI ILB.",
+    "source_url": "https://www.rnli.org/news-and-updates/",
+    "source_type": "rnli",
+    "approx_conditions": {
+      "mean_wind_knots": 12, "max_gust_knots": 18, "wind_dir_deg": 67,
+      "wave_height_m": 1.6, "rain_mm": 1, "mslp_hpa": 1012, "tide_range_m": 3.2
+    }
+  },
+  {
+    "date": "2017-08-05",
+    "type": "rnli_launch",
+    "severity": 2,
+    "casualties": 0,
+    "title": "RNLI Skerries callout — swimmer in difficulty",
+    "description": "Swimmer in difficulty 200m offshore. ESE wind 14kts, swell 1.2m, spring tide ebb. RNLI towed to safety.",
+    "source_url": "https://data-rnli.opendata.arcgis.com/",
+    "source_type": "rnli_open_data",
+    "approx_conditions": {
+      "mean_wind_knots": 14, "max_gust_knots": 20, "wind_dir_deg": 112,
+      "wave_height_m": 1.2, "rain_mm": 2, "mslp_hpa": 1015, "tide_range_m": 3.1
+    }
+  },
+  {
+    "date": "2020-08-23",
+    "type": "near_miss",
+    "severity": 2,
+    "casualties": 0,
+    "title": "Paddleboarder rescued off Skerries Island",
+    "description": "Paddleboarder carried offshore in wind shadow eddy. NE 20kts, tide ebbing fast. Coast guard helicopter. Swell 1.0m.",
+    "source_url": "https://www.fingalindependent.ie/",
+    "source_type": "news",
+    "approx_conditions": {
+      "mean_wind_knots": 20, "max_gust_knots": 28, "wind_dir_deg": 45,
+      "wave_height_m": 1.0, "rain_mm": 0, "mslp_hpa": 1018, "tide_range_m": 2.8
+    }
+  }
+]

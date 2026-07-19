@@ -1,36 +1,83 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# BeachSafe Ireland 🌊
 
-## Getting Started
+[![CI](https://github.com/calapor/beachsafe/actions/workflows/ci.yml/badge.svg)](https://github.com/calapor/beachsafe/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/github/checks-status/calapor/beachsafe/main?check=Vitest&label=tests&logo=vitest)](https://github.com/calapor/beachsafe/actions/workflows/ci.yml)
 
-First, run the development server:
+Coastal incident condition-matching & alerting for three Irish beaches —
+**Fountainstown** (Cork), **Ballybunion** (Kerry), and **Skerries** (Dublin).
+
+BeachSafe ingests decades of open environmental data (Met Éireann weather, Marine Institute wave buoys, moon phase) plus a curated record of past dangerous events (RNLI launches, drownings, rescues). When today's forecast conditions resemble those of past incidents — by onshore wind, wave height, spring tide, and pressure trend — it raises a tiered alert.
+
+> **Pattern match, not a prediction.** Alert levels reflect historical similarity only. Always follow lifeguard and coast guard advice.
+
+## Stack
+
+- **Next.js 16** (App Router) + **Tailwind CSS v4**
+- **Neon Postgres** via `@neondatabase/serverless`
+- **Recharts** for condition charts
+- **SunCalc** for moon phase / illumination
+- **fast-xml-parser** for Met Éireann forecast XML
+- **Vitest** for pure-function unit tests
+
+## Getting started
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
+
+# Set up env
+cp .env.local.example .env.local  # add DATABASE_URL
+
+# Run migrations + seed beaches
+pnpm migrate
+
+# Ingest all data (weather → waves → astro → incidents → fingerprints)
+pnpm etl
+
+# Run tests
+pnpm test
+
+# Start dev server
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## ETL scripts
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Script | Description |
+|---|---|
+| `scripts/migrate.ts` | Apply schema + seed beach rows |
+| `scripts/etl/ingest-weather.ts` | Met Éireann daily CSV per station |
+| `scripts/etl/ingest-waves.ts` | Marine Institute ERDDAP buoy data |
+| `scripts/etl/compute-astro.ts` | SunCalc moon phase / tide range estimation |
+| `scripts/etl/seed-incidents.ts` | Load curated `data/incidents.*.json` |
+| `scripts/etl/build-fingerprints.ts` | Compute feature vectors for all incidents |
+| `scripts/etl/run-all.ts` | Orchestrates all of the above (`pnpm etl`) |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Similarity engine
 
-## Learn More
+`src/lib/similarity.ts` — pure functions, fully unit-tested, no I/O:
 
-To learn more about Next.js, take a look at the following resources:
+- `fingerprint(observationWindow, beachBearing)` → normalised feature vector
+- `score(candidate, reference)` → 0–1 via weighted Gaussian kernel
+- `matchAll(candidate, fingerprints)` → ranked matches
+- `alertLevel(score)` → `none | watch | warning | severe`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Pages
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Route | Description |
+|---|---|
+| `/` | Dashboard: 3 beach cards with live alert levels |
+| `/beach/[slug]` | Incident timeline, 5-day forecast strip, conditions chart |
+| `/beach/[slug]/incident/[id]` | Day-of conditions + 7-day-prior panel + similar incidents |
+| `/methodology` | Data provenance, coverage gaps, similarity algorithm |
+| `/api/alerts?beach=<slug>` | JSON: scored forecast days + nearest incident matches |
 
-## Deploy on Vercel
+## Deployment
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Set `DATABASE_URL` in Vercel environment variables. `APP_VERSION` is injected at build time by the deploy script (`<short-sha> (#<build-number>)`).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Data sources
+
+- **Met Éireann** daily CSV: `cli.fusio.net/cli/climate_data/webdata/dly<STATION>.csv`
+- **Marine Institute** ERDDAP: `erddap.marine.ie/erddap/tabledap/IWaveBNetwork`
+- **RNLI Open Data**: `data-rnli.opendata.arcgis.com`
+- **Moon phase**: SunCalc (computed, no external API)

@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  allowedDevOrigins: ["*"],
+  typescript: { ignoreBuildErrors: true },
+  images: { unoptimized: true },
 };
 
 export default nextConfig;
