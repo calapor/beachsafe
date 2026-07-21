@@ -6,6 +6,7 @@ import { MoonGlyph } from "@/components/moon-glyph";
 import { ConditionsChart } from "@/components/conditions-chart";
 import { getForecastDays } from "@/lib/forecast";
 import type { ForecastDay } from "@/lib/forecast";
+import type { FeatureVector } from "@/lib/similarity";
 
 export const revalidate = 3600;
 
@@ -23,19 +24,128 @@ const TYPE_COLOR: Record<string, string> = {
   near_miss:   "bg-yellow-100 text-yellow-800",
 };
 
+const ALERT_REASON: Record<string, string> = {
+  none:    "No significant similarity to past incidents",
+  watch:   "Some similarity to past dangerous conditions",
+  warning: "Conditions closely resemble past incidents",
+  severe:  "Very high match to past dangerous incidents",
+};
+
+function describeFeatures(fv: FeatureVector): string[] {
+  const reasons: string[] = [];
+
+  // Onshore wind component (weight 2.5 — most impactful)
+  if (fv.onshoreComponent > 0.7)
+    reasons.push("Wind driving directly onshore");
+  else if (fv.onshoreComponent > 0.35)
+    reasons.push("Onshore wind component");
+
+  // Max wave (weight 2.0)
+  const waveM = (fv.maxWave * 5).toFixed(1);
+  if (fv.maxWave > 0.5)
+    reasons.push(`Heavy swell (${waveM} m)`);
+  else if (fv.maxWave > 0.2)
+    reasons.push(`Moderate swell (${waveM} m)`);
+
+  // Tide range (weight 1.5)
+  const tideM = (fv.tideRange * 5).toFixed(1);
+  if (fv.tideRange > 0.65)
+    reasons.push(`Spring tides (${tideM} m range)`);
+  else if (fv.tideRange > 0.35)
+    reasons.push(`Moderate tidal range (${tideM} m)`);
+
+  // Pressure drop (weight 1.5)
+  const dropHpa = (fv.pressureDrop * 30).toFixed(0);
+  if (fv.pressureDrop > 0.4)
+    reasons.push(`Rapid pressure drop (${dropHpa} hPa)`);
+  else if (fv.pressureDrop > 0.17)
+    reasons.push(`Falling pressure (${dropHpa} hPa)`);
+
+  // Max gust (weight 1.2)
+  const gustKts = (fv.maxGust * 50).toFixed(0);
+  if (fv.maxGust > 0.5)
+    reasons.push(`Strong gusts (${gustKts} kts)`);
+  else if (fv.maxGust > 0.28)
+    reasons.push(`Moderate gusts (${gustKts} kts)`);
+
+  // Mean wind (weight 1.0)
+  const windKts = (fv.meanWind * 30).toFixed(0);
+  if (fv.meanWind > 0.5)
+    reasons.push(`Sustained high winds (${windKts} kts)`);
+  else if (fv.meanWind > 0.3)
+    reasons.push(`Elevated sustained winds (${windKts} kts)`);
+
+  // Total rain (weight 0.6)
+  const rainMm = (fv.totalRain * 50).toFixed(0);
+  if (fv.totalRain > 0.4)
+    reasons.push(`Heavy rainfall (${rainMm} mm)`);
+  else if (fv.totalRain > 0.2)
+    reasons.push(`Rainfall (${rainMm} mm)`);
+
+  // Moon phase (weight 0.5)
+  const illumPct = Math.round(fv.moonIllum * 100);
+  if (fv.moonIllum > 0.85)
+    reasons.push(`Full moon (${illumPct}% illuminated)`);
+  else if (fv.moonIllum < 0.08)
+    reasons.push(`New moon`);
+
+  return reasons;
+}
+
 function ForecastStrip({ days }: { days: ForecastDay[] }) {
   return (
-    <div className="grid grid-cols-5 gap-2">
-      {days.map((d) => (
-        <div key={d.date} className="bg-white border border-gray-200 rounded-xl p-3 flex flex-col gap-2 items-center text-center">
-          <p className="text-xs font-semibold text-gray-500">{d.date.slice(5)}</p>
-          <AlertBadge level={d.alertLevel} size="sm" />
-          {d.wind_knots != null && (
-            <p className="text-xs text-gray-600">{d.wind_knots.toFixed(0)} kts</p>
-          )}
-          <p className="text-xs text-gray-400">{(d.moon_illum * 100).toFixed(0)}% 🌕</p>
-        </div>
-      ))}
+    <div className="grid grid-cols-5 gap-2 overflow-visible">
+      {days.map((d) => {
+        const driverList = describeFeatures(d.features);
+        return (
+          <div key={d.date} className="relative group bg-white border border-gray-200 rounded-xl p-3 flex flex-col gap-2 items-center text-center">
+            <p className="text-xs font-semibold text-gray-500">{d.date.slice(5)}</p>
+            <AlertBadge level={d.alertLevel} size="sm" />
+            {d.wind_knots != null && (
+              <p className="text-xs text-gray-600">{d.wind_knots.toFixed(0)} kts</p>
+            )}
+            {d.wave_height_m != null && (
+              <p className="text-xs text-gray-500">{d.wave_height_m.toFixed(1)} m 🌊</p>
+            )}
+            <p className="text-xs text-gray-400">{(d.moon_illum * 100).toFixed(0)}% 🌕</p>
+
+            {/* Hover tooltip */}
+            <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 bg-gray-900 text-white text-xs rounded-lg p-3 opacity-0 group-hover:opacity-100 transition-opacity z-20 text-left shadow-lg">
+              <p className="font-semibold mb-1">{ALERT_REASON[d.alertLevel]}</p>
+              <p className="text-gray-400 mb-2">{(d.score * 100).toFixed(0)}% similarity to historical incidents</p>
+
+              {/* Driving factors */}
+              {driverList.length > 0 && (
+                <div className="mb-2">
+                  <p className="text-gray-500 uppercase tracking-wide text-[10px] mb-1">Contributing factors</p>
+                  <ul className="space-y-0.5">
+                    {driverList.map((r) => (
+                      <li key={r} className="flex items-start gap-1 text-gray-300">
+                        <span className="text-orange-400 mt-px">›</span>
+                        {r}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Top matching incidents */}
+              {d.topMatches.length > 0 && (
+                <div className="border-t border-gray-700 pt-2">
+                  <p className="text-gray-500 uppercase tracking-wide text-[10px] mb-1">Closest historical matches</p>
+                  {d.topMatches.slice(0, 2).map((m) => (
+                    <p key={m.incidentId} className="text-gray-300 truncate">
+                      {(m.score * 100).toFixed(0)}% — {m.title}
+                    </p>
+                  ))}
+                </div>
+              )}
+
+              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -68,7 +178,7 @@ export default async function BeachPage({ params }: { params: Promise<{ slug: st
     .slice()
     .reverse()
     .map((r) => ({
-      date: String(r.date).slice(0, 10),
+      date: (r.date instanceof Date ? r.date.toISOString() : String(r.date)).slice(0, 10),
       wind: r.mean_wind_knots ?? null,
       wave: r.wave_height_m ?? null,
       rain: r.rain_mm ?? null,
@@ -140,7 +250,7 @@ export default async function BeachPage({ params }: { params: Promise<{ slug: st
                     className="flex gap-4 bg-white border border-gray-200 rounded-xl p-4 hover:border-blue-400 hover:shadow-sm transition-all"
                   >
                     <div className="flex-shrink-0 w-16 text-center">
-                      <p className="text-xs font-mono text-gray-400">{String(inc.date).slice(0, 10)}</p>
+                      <p className="text-xs font-mono text-gray-400">{(inc.date instanceof Date ? inc.date.toISOString() : String(inc.date)).slice(0, 10)}</p>
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">

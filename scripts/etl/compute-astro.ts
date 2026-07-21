@@ -48,8 +48,12 @@ export async function computeAstroForBeach(beachId: number, slug: string) {
       UPDATE observations
       SET moon_phase = ${phase},
           moon_illum = ${illum},
-          tide_range_m = ${tideRange},
-          source_flags = COALESCE(source_flags, '{}'::jsonb) || '{"tide":"estimated","moon":"computed"}'::jsonb
+          tide_range_m = COALESCE(tide_range_m, ${tideRange}),
+          source_flags = COALESCE(source_flags, '{}'::jsonb)
+            || jsonb_build_object('moon', 'computed')
+            || CASE WHEN tide_range_m IS NULL
+                    THEN jsonb_build_object('tide', 'estimated')
+                    ELSE '{}'::jsonb END
       WHERE beach_id = ${beachId} AND date = ${row.date}
     `;
   }

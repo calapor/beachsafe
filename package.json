@@ -9,8 +9,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "migrate": "tsx scripts/migrate.ts",
-    "etl": "tsx scripts/etl/run-all.ts"
+    "migrate": "tsx --env-file .env.local scripts/migrate.ts",
+    "etl": "tsx --env-file .env.local scripts/etl/run-all.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

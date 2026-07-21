@@ -1,6 +1,6 @@
 import { getMoonIllumination } from "suncalc";
 import { XMLParser } from "fast-xml-parser";
-import { fingerprint, matchAll, alertLevel, type ObsRow, type ScoredMatch } from "./similarity";
+import { fingerprint, matchAll, alertLevel, type ObsRow, type ScoredMatch, type FeatureVector } from "./similarity";
 
 export interface ForecastDay {
   date: string;
@@ -16,6 +16,7 @@ export interface ForecastDay {
   score: number;
   alertLevel: "none" | "watch" | "warning" | "severe";
   topMatches: ScoredMatch[];
+  features: FeatureVector;
 }
 
 const BASE_TIDE_RANGE: Record<string, { spring: number; neap: number }> = {
@@ -117,6 +118,38 @@ function aggregateByDay(points: MetForecastPoint[]): Record<string, {
   return result as never;
 }
 
+async function fetchMarineForecast(lat: number, lon: number): Promise<Record<string, { maxWave: number | null; meanPeriod: number | null }>> {
+  const url =
+    `https://marine-api.open-meteo.com/v1/marine` +
+    `?latitude=${lat}&longitude=${lon}` +
+    `&hourly=wave_height,wave_period` +
+    `&forecast_days=7`;
+  try {
+    const res = await fetch(url, { next: { revalidate: 3600 } });
+    if (!res.ok) return {};
+    const data = await res.json() as {
+      hourly: { time: string[]; wave_height: (number | null)[]; wave_period: (number | null)[] };
+    };
+    const byDay: Record<string, { heights: number[]; periods: number[] }> = {};
+    for (let i = 0; i < data.hourly.time.length; i++) {
+      const day = data.hourly.time[i].split("T")[0];
+      if (!byDay[day]) byDay[day] = { heights: [], periods: [] };
+      const h = data.hourly.wave_height[i];
+      const p = data.hourly.wave_period[i];
+      if (h != null && !isNaN(h)) byDay[day].heights.push(h);
+      if (p != null && !isNaN(p)) byDay[day].periods.push(p);
+    }
+    const result: Record<string, { maxWave: number | null; meanPeriod: number | null }> = {};
+    for (const [day, v] of Object.entries(byDay)) {
+      result[day] = {
+        maxWave: v.heights.length ? Math.max(...v.heights) : null,
+        meanPeriod: v.periods.length ? v.periods.reduce((a, b) => a + b, 0) / v.periods.length : null,
+      };
+    }
+    return result;
+  } catch { return {}; }
+}
+
 function moonDataForDay(date: Date): { illum: number; phase: number } {
   const m = getMoonIllumination(date);
   return { illum: m.fraction, phase: m.phase };
@@ -133,12 +166,15 @@ export async function getForecastDays(
   fingerprints: Array<{ incident_id: number; date: string; title: string; type: string; severity: number; features: unknown }>,
   days = 5
 ): Promise<ForecastDay[]> {
-  const metPoints = await fetchMetForecast(beach.lat, beach.lon);
+  const [metPoints, waveByDay] = await Promise.all([
+    fetchMetForecast(beach.lat, beach.lon),
+    fetchMarineForecast(beach.lat, beach.lon),
+  ]);
   const metByDay = aggregateByDay(metPoints);
 
   const fps = fingerprints.map((fp) => ({
     incidentId: fp.incident_id,
-    date: typeof fp.date === "string" ? fp.date : String(fp.date),
+    date: fp.date instanceof Date ? fp.date.toISOString().slice(0, 10) : String(fp.date).slice(0, 10),
     title: fp.title,
     type: fp.type,
     severity: fp.severity,
@@ -153,15 +189,15 @@ export async function getForecastDays(
     d.setDate(d.getDate() + i);
     const dateStr = d.toISOString().split("T")[0];
     const met = metByDay[dateStr] ?? {};
+    const wave = waveByDay[dateStr] ?? {};
     const { illum, phase } = moonDataForDay(d);
     const tideRange = tideRangeForSlug(beach.slug, phase);
 
-    // Build a synthetic observation window (just the one day — we don't have past observations in forecast)
     const obs: ObsRow = {
       date: dateStr,
       mean_wind_knots: met.meanWind ?? null,
       max_gust_knots: met.maxGust ?? null,
-      wave_height_m: null,
+      wave_height_m: wave.maxWave ?? null,
       rain_mm: met.totalPrecip ?? null,
       mslp_hpa: met.mslp ?? null,
       moon_illum: illum,
@@ -178,8 +214,8 @@ export async function getForecastDays(
       wind_knots: met.meanWind ?? null,
       gust_knots: met.maxGust ?? null,
       wind_dir_deg: met.windDir ?? null,
-      wave_height_m: null,
-      wave_period_s: null,
+      wave_height_m: wave.maxWave ?? null,
+      wave_period_s: wave.meanPeriod ?? null,
       precip_mm: met.totalPrecip ?? null,
       mslp_hpa: met.mslp ?? null,
       moon_illum: illum,
@@ -187,6 +223,7 @@ export async function getForecastDays(
       score: topScore,
       alertLevel: alertLevel(topScore),
       topMatches: matches.slice(0, 3),
+      features: fv,
     });
   }
 

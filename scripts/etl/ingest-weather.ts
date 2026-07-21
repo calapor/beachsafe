@@ -1,120 +1,125 @@
 import { neon } from "@neondatabase/serverless";
-import { parse } from "date-fns";
 
 const sql = neon(process.env.DATABASE_URL!);
 
 const BEACHES = [
-  { slug: "fountainstown", stationNo: "3904" },
-  { slug: "ballybunion",   stationNo: "2275" },
-  { slug: "skerries",      stationNo: "532" },
+  { slug: "fountainstown", lat: 51.7833, lon: -8.2667 },
+  { slug: "ballybunion",   lat: 52.5137, lon: -9.6722 },
+  { slug: "skerries",      lat: 53.5833, lon: -6.1000 },
 ];
 
-async function parseMetCsv(csv: string): Promise<Array<Record<string, string>>> {
-  const lines = csv.split("\n");
-  // Find header row — Met Éireann CSVs have preamble lines before the data header
-  let headerIdx = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].toLowerCase().includes("date") && lines[i].includes(",")) {
-      headerIdx = i;
-      break;
-    }
-  }
-  if (headerIdx === -1) throw new Error("Could not find CSV header");
+const CHUNK = 500;
 
-  const headers = lines[headerIdx].split(",").map((h) => h.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, ""));
-  const rows: Array<Record<string, string>> = [];
-
-  for (let i = headerIdx + 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    const parts = line.split(",");
-    const row: Record<string, string> = {};
-    headers.forEach((h, idx) => { row[h] = (parts[idx] ?? "").trim(); });
-    rows.push(row);
-  }
-  return rows;
+function avg(vals: (number | null)[]): number | null {
+  const clean = vals.filter((v): v is number => v !== null && !isNaN(v));
+  return clean.length ? clean.reduce((a, b) => a + b, 0) / clean.length : null;
 }
 
-function num(v: string | undefined): number | null {
-  if (!v || v === "" || v.toLowerCase() === "null") return null;
-  const n = parseFloat(v);
+function nullNum(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  const n = Number(v);
   return isNaN(n) ? null : n;
 }
 
-function parseWindDir(v: string | undefined): number | null {
-  if (!v) return null;
-  const compass: Record<string, number> = {
-    N: 0, NNE: 22.5, NE: 45, ENE: 67.5,
-    E: 90, ESE: 112.5, SE: 135, SSE: 157.5,
-    S: 180, SSW: 202.5, SW: 225, WSW: 247.5,
-    W: 270, WNW: 292.5, NW: 315, NNW: 337.5,
-  };
-  const clean = v.trim().toUpperCase();
-  if (compass[clean] !== undefined) return compass[clean];
-  const n = parseFloat(clean);
-  return isNaN(n) ? null : n;
-}
+export async function ingestWeatherForBeach(beachId: number, lat: number, lon: number) {
+  const today = new Date().toISOString().split("T")[0];
+  const url =
+    `https://archive-api.open-meteo.com/v1/archive` +
+    `?latitude=${lat}&longitude=${lon}` +
+    `&start_date=1950-01-01&end_date=${today}` +
+    `&daily=precipitation_sum,temperature_2m_max,temperature_2m_min,wind_gusts_10m_max,wind_direction_10m_dominant` +
+    `&hourly=wind_speed_10m,pressure_msl` +
+    `&wind_speed_unit=kn&timezone=UTC`;
 
-export async function ingestWeatherForStation(beachId: number, stationNo: string) {
-  const url = `https://cli.fusio.net/cli/climate_data/webdata/dly${stationNo}.csv`;
-  console.log(`  Fetching ${url}`);
+  console.log(`  Fetching Open-Meteo ERA5 for beach ${beachId} (lat=${lat}, lon=${lon})`);
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
-  const text = await res.text();
-  const rows = await parseMetCsv(text);
-
-  let inserted = 0;
-  for (const row of rows) {
-    const dateStr = row["date"] || row[""];
-    if (!dateStr) continue;
-    // Met Éireann format: DD-Mon-YYYY or YYYY-MM-DD
-    let parsedDate: Date;
-    try {
-      if (/^\d{2}-[A-Za-z]{3}-\d{4}$/.test(dateStr)) {
-        parsedDate = parse(dateStr, "dd-MMM-yyyy", new Date());
-      } else if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-        parsedDate = new Date(dateStr);
-      } else {
-        continue;
-      }
-    } catch { continue; }
-
-    const isoDate = parsedDate.toISOString().split("T")[0];
-
-    const windDirKey = Object.keys(row).find((k) => k.includes("wind") && k.includes("dir"));
-    const data = {
-      rain_mm:         num(row["rain"] ?? row["rain_mm"]),
-      temp_max_c:      num(row["maxtp"] ?? row["max_temp"] ?? row["temp_max"]),
-      temp_min_c:      num(row["mintp"] ?? row["min_temp"] ?? row["temp_min"]),
-      mean_wind_knots: num(row["wdsp"] ?? row["mean_wind"]),
-      max_gust_knots:  num(row["maxgt"] ?? row["max_gust"]),
-      wind_dir_deg:    parseWindDir(windDirKey ? row[windDirKey] : undefined),
-      mslp_hpa:        num(row["msl"] ?? row["mslp"] ?? row["pressure"]),
+  if (!res.ok) throw new Error(`HTTP ${res.status} from Open-Meteo`);
+  const data = await res.json() as {
+    daily: {
+      time: string[];
+      precipitation_sum: (number | null)[];
+      temperature_2m_max: (number | null)[];
+      temperature_2m_min: (number | null)[];
+      wind_gusts_10m_max: (number | null)[];
+      wind_direction_10m_dominant: (number | null)[];
     };
+    hourly: {
+      time: string[];
+      wind_speed_10m: (number | null)[];
+      pressure_msl: (number | null)[];
+    };
+  };
 
-    const hasData = Object.values(data).some((v) => v !== null);
-    if (!hasData) continue;
+  // Build per-day averages from hourly data
+  const hourlyByDate: Record<string, { wind: (number | null)[]; pressure: (number | null)[] }> = {};
+  for (let i = 0; i < data.hourly.time.length; i++) {
+    const date = data.hourly.time[i].split("T")[0];
+    if (!hourlyByDate[date]) hourlyByDate[date] = { wind: [], pressure: [] };
+    hourlyByDate[date].wind.push(nullNum(data.hourly.wind_speed_10m[i]));
+    hourlyByDate[date].pressure.push(nullNum(data.hourly.pressure_msl[i]));
+  }
 
-    const cols = ["beach_id", "date", ...Object.keys(data).filter((k) => (data as Record<string, unknown>)[k] !== null)];
-    const vals = [beachId, isoDate, ...Object.keys(data).filter((k) => (data as Record<string, unknown>)[k] !== null).map((k) => (data as Record<string, unknown>)[k])];
-    const setClauses = cols.slice(2).map((c) => `${c} = EXCLUDED.${c}`).join(", ");
+  const days = data.daily.time;
+  console.log(`  Got ${days.length} daily rows from ERA5 — inserting in chunks of ${CHUNK}`);
+
+  // Columns are fixed for every row; use NULL for missing values.
+  // This allows true multi-row bulk inserts (one query per chunk).
+  // 9 params per row × 500 rows = 4500 params, well within Postgres limits.
+  const COL_COUNT = 9;
+  for (let chunkStart = 0; chunkStart < days.length; chunkStart += CHUNK) {
+    const chunk = days.slice(chunkStart, chunkStart + CHUNK);
+    console.log(`  Progress: ${chunkStart}/${days.length}`);
+
+    const placeholders: string[] = [];
+    const vals: unknown[] = [];
+    let p = 1;
+
+    for (const date of chunk) {
+      const i = days.indexOf(date);
+      const hourly = hourlyByDate[date] ?? { wind: [], pressure: [] };
+
+      vals.push(
+        beachId,
+        date,
+        nullNum(data.daily.precipitation_sum[i]),
+        nullNum(data.daily.temperature_2m_max[i]),
+        nullNum(data.daily.temperature_2m_min[i]),
+        nullNum(data.daily.wind_gusts_10m_max[i]),
+        nullNum(data.daily.wind_direction_10m_dominant[i]),
+        avg(hourly.wind),
+        avg(hourly.pressure),
+      );
+      placeholders.push(
+        `($${p},$${p+1},$${p+2},$${p+3},$${p+4},$${p+5},$${p+6},$${p+7},$${p+8},'{"weather":"era5_openmeteo"}'::jsonb)`
+      );
+      p += COL_COUNT;
+    }
 
     await sql.query(
-      `INSERT INTO observations (${cols.join(", ")}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(", ")})
-       ON CONFLICT (beach_id, date) DO UPDATE SET ${setClauses}`,
+      `INSERT INTO observations
+         (beach_id, date, rain_mm, temp_max_c, temp_min_c,
+          max_gust_knots, wind_dir_deg, mean_wind_knots, mslp_hpa, source_flags)
+       VALUES ${placeholders.join(",")}
+       ON CONFLICT (beach_id, date) DO UPDATE SET
+         rain_mm         = EXCLUDED.rain_mm,
+         temp_max_c      = EXCLUDED.temp_max_c,
+         temp_min_c      = EXCLUDED.temp_min_c,
+         max_gust_knots  = EXCLUDED.max_gust_knots,
+         wind_dir_deg    = EXCLUDED.wind_dir_deg,
+         mean_wind_knots = EXCLUDED.mean_wind_knots,
+         mslp_hpa        = EXCLUDED.mslp_hpa,
+         source_flags    = COALESCE(observations.source_flags, '{}'::jsonb) || EXCLUDED.source_flags`,
       vals
     );
-    inserted++;
   }
-  console.log(`  Inserted/updated ${inserted} weather rows for beach ${beachId}`);
+  console.log(`  Done: ${days.length} weather rows for beach ${beachId}`);
 }
 
 async function main() {
   for (const beach of BEACHES) {
     const rows = await sql`SELECT id FROM beaches WHERE slug = ${beach.slug}`;
     if (!rows.length) { console.warn(`Beach not found: ${beach.slug}`); continue; }
-    const beachId = (rows[0] as { id: number }).id;
-    await ingestWeatherForStation(beachId, beach.stationNo);
+    await ingestWeatherForBeach((rows[0] as { id: number }).id, beach.lat, beach.lon);
   }
 }
 

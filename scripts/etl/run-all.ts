@@ -2,10 +2,11 @@ import { execSync } from "child_process";
 import { resolve } from "path";
 
 const ROOT = resolve(__dirname, "../..");
+const SCRIPTS = resolve(__dirname, ".."); // scripts/
 
 function run(script: string) {
   console.log(`\n=== Running ${script} ===`);
-  execSync(`tsx ${resolve(__dirname, script)}`, {
+  execSync(`tsx ${resolve(SCRIPTS, script)}`, {
     stdio: "inherit",
     env: { ...process.env },
     cwd: ROOT,
@@ -16,6 +17,8 @@ async function main() {
   run("migrate.ts");
   run("etl/ingest-weather.ts");
   run("etl/ingest-waves.ts");
+  run("etl/ingest-tides.ts");
+  run("etl/ingest-rnli.ts");
   run("etl/compute-astro.ts");
   run("etl/seed-incidents.ts");
   // Seed synthetic observations from approx_conditions as fallback when
