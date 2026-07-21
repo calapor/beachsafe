@@ -21,6 +21,9 @@ async function main() {
     ON CONFLICT (slug) DO NOTHING
   `;
   console.log("Beaches seeded.");
+
+  await sql.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS external_id TEXT`);
+  console.log("Schema migrations applied.");
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

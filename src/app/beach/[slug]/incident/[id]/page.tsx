@@ -43,7 +43,9 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
   } | null;
   if (!incident) notFound();
 
-  const isoDate = typeof incident.date === "string" ? incident.date.slice(0, 10) : String(incident.date);
+  const isoDate = incident.date instanceof Date
+    ? incident.date.toISOString().slice(0, 10)
+    : String(incident.date).slice(0, 10);
   const bearing = BEACH_BEARING[incident.beach_slug] ?? 270;
 
   const [window7, allFps] = await Promise.all([
@@ -58,7 +60,7 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
     wind_dir_deg?: number | null; sea_temp_c?: number | null;
   }>;
 
-  const dayOf = obs7.find((r) => String(r.date).slice(0, 10) === isoDate) ?? obs7[obs7.length - 1];
+  const dayOf = obs7.find((r) => (r.date instanceof Date ? r.date.toISOString() : String(r.date)).slice(0, 10) === isoDate) ?? obs7[obs7.length - 1];
 
   // Feature vector for this incident
   const fv = fingerprint(obs7 as never, bearing);
@@ -68,7 +70,7 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
     .filter((fp) => fp.incident_id !== incidentId)
     .map((fp) => ({
       incidentId: fp.incident_id,
-      date: String(fp.date).slice(0, 10),
+      date: (fp.date instanceof Date ? fp.date.toISOString() : String(fp.date)).slice(0, 10),
       title: fp.title,
       type: fp.type,
       severity: fp.severity,
@@ -78,7 +80,7 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
   const similar = matchAll(fv, fps).slice(0, 5);
 
   const chartData = obs7.map((r) => ({
-    date: String(r.date).slice(0, 10),
+    date: (r.date instanceof Date ? r.date.toISOString() : String(r.date)).slice(0, 10),
     wind: r.mean_wind_knots ?? null,
     wave: r.wave_height_m ?? null,
     rain: r.rain_mm ?? null,

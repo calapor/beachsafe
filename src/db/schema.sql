@@ -51,7 +51,8 @@ CREATE TABLE IF NOT EXISTS incidents (
   title        TEXT NOT NULL,
   description  TEXT,
   source_url   TEXT,
-  source_type  TEXT
+  source_type  TEXT,
+  external_id  TEXT
 );
 
 CREATE TABLE IF NOT EXISTS incident_fingerprints (
