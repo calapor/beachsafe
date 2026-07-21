@@ -32,7 +32,7 @@ async function main() {
         INSERT INTO incidents (beach_id, date, type, severity, casualties, title, description, source_url, source_type)
         VALUES (${beach.id}, ${inc.date}::date, ${inc.type}, ${inc.severity}, ${inc.casualties},
                 ${inc.title}, ${inc.description}, ${inc.source_url}, ${inc.source_type})
-        ON CONFLICT DO NOTHING
+        ON CONFLICT (beach_id, date, title) DO NOTHING
       `;
     }
     console.log(`Seeded ${incidents.length} incidents for ${beach.slug}`);

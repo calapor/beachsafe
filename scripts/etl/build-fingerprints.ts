@@ -3,25 +3,28 @@ import { fingerprint, type ObsRow } from "../../src/lib/similarity";
 
 const sql = neon(process.env.DATABASE_URL!);
 
-// Beach facing direction (degrees: from which direction waves/wind arrive)
 const BEACH_BEARING: Record<string, number> = {
-  fountainstown: 135, // SE-facing bay
-  ballybunion:   270, // W-facing Atlantic
-  skerries:      90,  // E-facing
+  fountainstown: 135,
+  ballybunion:   270,
+  skerries:      90,
 };
 
 async function main() {
   const incidents = await sql`
-    SELECT i.id, i.beach_id, i.date, b.slug
+    SELECT i.id, i.beach_id, i.date, i.hour_of_day, b.slug, b.lat, b.lon
     FROM incidents i
     JOIN beaches b ON b.id = i.beach_id
     ORDER BY i.id
   `;
 
-  for (const inc of incidents as Array<{ id: number; beach_id: number; date: string; slug: string }>) {
+  for (const inc of incidents as Array<{
+    id: number; beach_id: number; date: string; hour_of_day: number | null;
+    slug: string; lat: number; lon: number;
+  }>) {
     const window = await sql`
       SELECT date, mean_wind_knots, max_gust_knots, wave_height_m, rain_mm,
-             mslp_hpa, moon_illum, tide_range_m, wind_dir_deg
+             mslp_hpa, moon_illum, tide_range_m, wind_dir_deg,
+             high_tide_times, low_tide_times
       FROM observations
       WHERE beach_id = ${inc.beach_id}
         AND date <= ${inc.date}::date
@@ -35,7 +38,11 @@ async function main() {
     }
 
     const bearing = BEACH_BEARING[inc.slug] ?? 270;
-    const features = fingerprint(window, bearing);
+    const features = fingerprint(window, bearing, {
+      lat: inc.lat,
+      lon: inc.lon,
+      incidentHour: inc.hour_of_day,
+    });
 
     await sql`
       INSERT INTO incident_fingerprints (incident_id, features, computed_at)
@@ -43,7 +50,7 @@ async function main() {
       ON CONFLICT (incident_id) DO UPDATE
         SET features = EXCLUDED.features, computed_at = NOW()
     `;
-    console.log(`  Fingerprinted incident ${inc.id}: ${JSON.stringify(features)}`);
+    console.log(`  Fingerprinted incident ${inc.id}: daylightHighTide=${features.daylightHighTide.toFixed(2)} risingFraction=${features.risingFraction.toFixed(2)}`);
   }
 
   console.log("Fingerprint build complete.");

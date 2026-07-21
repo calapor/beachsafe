@@ -1,3 +1,5 @@
+import { getTimes } from "suncalc";
+
 export interface FeatureVector {
   meanWind: number;
   maxGust: number;
@@ -7,6 +9,8 @@ export interface FeatureVector {
   moonIllum: number;
   tideRange: number;
   onshoreComponent: number;
+  daylightHighTide: number;
+  risingFraction: number;
 }
 
 export interface ScoredMatch {
@@ -17,6 +21,7 @@ export interface ScoredMatch {
   severity: number;
   score: number;
   alertLevel: "none" | "watch" | "warning" | "severe";
+  features: FeatureVector;
 }
 
 const WEIGHTS: Record<keyof FeatureVector, number> = {
@@ -24,8 +29,10 @@ const WEIGHTS: Record<keyof FeatureVector, number> = {
   maxWave: 2.0,
   tideRange: 1.5,
   pressureDrop: 1.5,
+  risingFraction: 1.2,
   maxGust: 1.2,
   meanWind: 1.0,
+  daylightHighTide: 1.0,
   totalRain: 0.6,
   moonIllum: 0.5,
 };
@@ -46,6 +53,8 @@ export function normalizeFeatures(raw: Partial<FeatureVector>): FeatureVector {
     moonIllum: raw.moonIllum ?? 0,
     tideRange: raw.tideRange ?? 0,
     onshoreComponent: raw.onshoreComponent ?? 0,
+    daylightHighTide: raw.daylightHighTide ?? 0.5,
+    risingFraction: raw.risingFraction ?? 0.5,
   };
 }
 
@@ -60,9 +69,104 @@ export interface ObsRow {
   moon_illum?: number | null;
   tide_range_m?: number | null;
   wind_dir_deg?: number | null;
+  high_tide_times?: string | null;
+  low_tide_times?: string | null;
 }
 
-export function fingerprint(window: ObsRow[], beachBearingDeg: number): FeatureVector {
+// Parse "HH:MM,HH:MM" into sorted array of minutes-since-midnight (UTC)
+function parseTideTimes(timesStr: string | null | undefined): number[] {
+  if (!timesStr) return [];
+  return timesStr
+    .split(",")
+    .map((t) => {
+      const parts = t.trim().split(":");
+      const h = parseInt(parts[0], 10);
+      const m = parseInt(parts[1] ?? "0", 10);
+      return h * 60 + m;
+    })
+    .filter((n) => !isNaN(n))
+    .sort((a, b) => a - b);
+}
+
+// Is the tide rising at the given minute-of-day, given sorted high/low tide times?
+function isTideRising(minOfDay: number, highs: number[], lows: number[]): boolean {
+  const extrema = [
+    ...highs.map((m) => ({ m, isHigh: true })),
+    ...lows.map((m) => ({ m, isHigh: false })),
+  ].sort((a, b) => a.m - b.m);
+
+  if (!extrema.length) return true;
+
+  let lastBefore: { m: number; isHigh: boolean } | null = null;
+  for (const e of extrema) {
+    if (e.m <= minOfDay) lastBefore = e;
+    else break;
+  }
+
+  // Before any extremum today: tide is heading toward the first one
+  // (rising if first extremum is a high, falling if first is a low)
+  if (lastBefore === null) return extrema[0].isHigh;
+
+  // After a high: falling; after a low: rising
+  return !lastBefore.isHigh;
+}
+
+function computeTideFeatures(
+  dateStr: string,
+  highTideTimes: string | null | undefined,
+  lowTideTimes: string | null | undefined,
+  lat: number,
+  lon: number,
+  incidentHour?: number | null
+): { daylightHighTide: number; risingFraction: number } {
+  const highs = parseTideTimes(highTideTimes);
+  const lows = parseTideTimes(lowTideTimes);
+
+  if (!highs.length && !lows.length) {
+    return { daylightHighTide: 0.5, risingFraction: 0.5 };
+  }
+
+  // Get sunrise/sunset in UTC minutes; fall back to typical Irish summer hours
+  let sunriseMins = 5 * 60 + 30;  // 05:30 UTC ≈ 06:30 BST
+  let sunsetMins  = 20 * 60 + 30; // 20:30 UTC ≈ 21:30 BST
+  try {
+    const date = new Date(dateStr + "T12:00:00Z");
+    const times = getTimes(date, lat, lon);
+    if (times.sunrise && !isNaN(times.sunrise.getTime())) {
+      sunriseMins = times.sunrise.getUTCHours() * 60 + times.sunrise.getUTCMinutes();
+    }
+    if (times.sunset && !isNaN(times.sunset.getTime())) {
+      sunsetMins = times.sunset.getUTCHours() * 60 + times.sunset.getUTCMinutes();
+    }
+  } catch { /* use fallbacks */ }
+
+  const daylightHighTide = highs.some((m) => m >= sunriseMins && m <= sunsetMins) ? 1 : 0;
+
+  let risingFraction: number;
+
+  if (incidentHour != null) {
+    // Exact callout hour known (UTC): point-in-time direction
+    risingFraction = isTideRising(incidentHour * 60, highs, lows) ? 1 : 0;
+  } else {
+    // Daylight window: sample every 30 min, compute rising fraction
+    const STEP = 30;
+    let risingCount = 0;
+    let totalCount = 0;
+    for (let m = sunriseMins; m <= sunsetMins; m += STEP) {
+      if (isTideRising(m, highs, lows)) risingCount++;
+      totalCount++;
+    }
+    risingFraction = totalCount > 0 ? risingCount / totalCount : 0.5;
+  }
+
+  return { daylightHighTide, risingFraction };
+}
+
+export function fingerprint(
+  window: ObsRow[],
+  beachBearingDeg: number,
+  geo?: { lat: number; lon: number; incidentHour?: number | null }
+): FeatureVector {
   if (!window.length) return normalizeFeatures({});
 
   const dayOf = window[window.length - 1];
@@ -85,9 +189,13 @@ export function fingerprint(window: ObsRow[], beachBearingDeg: number): FeatureV
   const windDir = dayOf.wind_dir_deg;
   let onshoreComponent = 0;
   if (windDir != null) {
-    const angleDiff = ((windDir - beachBearingDeg + 360) % 360);
+    const angleDiff = (windDir - beachBearingDeg + 360) % 360;
     onshoreComponent = Math.cos((angleDiff * Math.PI) / 180);
   }
+
+  const tideFeatures = geo
+    ? computeTideFeatures(dayOf.date, dayOf.high_tide_times, dayOf.low_tide_times, geo.lat, geo.lon, geo.incidentHour)
+    : { daylightHighTide: 0.5, risingFraction: 0.5 };
 
   return normalizeFeatures({
     meanWind: meanWind / 30,
@@ -98,6 +206,7 @@ export function fingerprint(window: ObsRow[], beachBearingDeg: number): FeatureV
     moonIllum,
     tideRange: tideRange / 5,
     onshoreComponent: Math.max(onshoreComponent, 0),
+    ...tideFeatures,
   });
 }
 
@@ -107,7 +216,7 @@ export function score(candidate: FeatureVector, reference: FeatureVector): numbe
   let scoreSum = 0;
   for (const k of keys) {
     const w = WEIGHTS[k];
-    const diff = (candidate[k] ?? 0) - (reference[k] ?? 0);
+    const diff = (candidate[k] ?? 0.5) - (reference[k] ?? 0.5);
     scoreSum += w * gaussian(diff);
     weightSum += w;
   }
@@ -127,7 +236,8 @@ export function matchAll(
 ): ScoredMatch[] {
   return fingerprints
     .map((fp) => {
-      const s = score(candidate, fp.features);
+      const normalized = normalizeFeatures(fp.features);
+      const s = score(candidate, normalized);
       return {
         incidentId: fp.incidentId,
         date: fp.date,
@@ -136,6 +246,7 @@ export function matchAll(
         severity: fp.severity,
         score: s,
         alertLevel: alertLevel(s),
+        features: normalized,
       };
     })
     .sort((a, b) => b.score - a.score);

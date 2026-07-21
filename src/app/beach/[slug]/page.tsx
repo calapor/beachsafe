@@ -31,6 +31,14 @@ const ALERT_REASON: Record<string, string> = {
   severe:  "Very high match to past dangerous incidents",
 };
 
+function conditionSummary(fv: FeatureVector): string {
+  const wind = (fv.meanWind * 30).toFixed(0);
+  const wave = (fv.maxWave * 5).toFixed(1);
+  const tide = (fv.tideRange * 5).toFixed(1);
+  const dirSymbol = fv.risingFraction === 0.5 ? "" : fv.risingFraction > 0.5 ? " ↑" : " ↓";
+  return `${wind}kt wind · ${wave}m waves · ${tide}m tide${dirSymbol}`;
+}
+
 function describeFeatures(fv: FeatureVector): string[] {
   const reasons: string[] = [];
 
@@ -89,6 +97,16 @@ function describeFeatures(fv: FeatureVector): string[] {
   else if (fv.moonIllum < 0.08)
     reasons.push(`New moon`);
 
+  // Tide direction (only when not neutral 0.5)
+  if (fv.daylightHighTide === 1)
+    reasons.push("High tide during daylight");
+  if (fv.risingFraction !== 0.5) {
+    if (fv.risingFraction > 0.7)
+      reasons.push("Tide predominantly rising through the day");
+    else if (fv.risingFraction < 0.3)
+      reasons.push("Tide predominantly falling through the day");
+  }
+
   return reasons;
 }
 
@@ -110,7 +128,7 @@ function ForecastStrip({ days }: { days: ForecastDay[] }) {
             <p className="text-xs text-gray-400">{(d.moon_illum * 100).toFixed(0)}% 🌕</p>
 
             {/* Hover tooltip */}
-            <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 bg-gray-900 text-white text-xs rounded-lg p-3 opacity-0 group-hover:opacity-100 transition-opacity z-20 text-left shadow-lg">
+            <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-80 bg-gray-900 text-white text-xs rounded-lg p-3 opacity-0 group-hover:opacity-100 transition-opacity z-20 text-left shadow-lg">
               <p className="font-semibold mb-1">{ALERT_REASON[d.alertLevel]}</p>
               <p className="text-gray-400 mb-2">{(d.score * 100).toFixed(0)}% similarity to historical incidents</p>
 
@@ -129,14 +147,23 @@ function ForecastStrip({ days }: { days: ForecastDay[] }) {
                 </div>
               )}
 
-              {/* Top matching incidents */}
+              {/* Top matching incidents with condition overlay */}
               {d.topMatches.length > 0 && (
                 <div className="border-t border-gray-700 pt-2">
                   <p className="text-gray-500 uppercase tracking-wide text-[10px] mb-1">Closest historical matches</p>
                   {d.topMatches.slice(0, 2).map((m) => (
-                    <p key={m.incidentId} className="text-gray-300 truncate">
-                      {(m.score * 100).toFixed(0)}% — {m.title}
-                    </p>
+                    <div key={m.incidentId} className="mb-2 last:mb-0">
+                      <p className="text-gray-300 truncate font-medium">
+                        {(m.score * 100).toFixed(0)}% — {m.title}
+                        <span className="text-gray-500 font-normal"> ({m.date.slice(0, 4)})</span>
+                      </p>
+                      <p className="text-amber-400 text-[10px] mt-0.5">
+                        Then: {conditionSummary(m.features)}
+                      </p>
+                      <p className="text-sky-400 text-[10px]">
+                        Now: {conditionSummary(d.features)}
+                      </p>
+                    </div>
                   ))}
                 </div>
               )}
@@ -161,12 +188,25 @@ export default async function BeachPage({ params }: { params: Promise<{ slug: st
     getAllFingerprints(beach.id),
   ]);
 
+  const lastTideObs = (recentObs as Array<{
+    date: Date | string;
+    high_tide_times?: string | null;
+    low_tide_times?: string | null;
+  }>).find((o) => o.high_tide_times != null);
+
   let forecastDays: ForecastDay[] = [];
   try {
     forecastDays = await getForecastDays(
       { slug: beach.slug, lat: beach.lat, lon: beach.lon },
       fingerprints as never,
-      5
+      5,
+      lastTideObs ? {
+        date: (lastTideObs.date instanceof Date
+          ? lastTideObs.date.toISOString()
+          : String(lastTideObs.date)).slice(0, 10),
+        high_tide_times: lastTideObs.high_tide_times ?? null,
+        low_tide_times:  lastTideObs.low_tide_times  ?? null,
+      } : undefined
     );
   } catch {
     // forecast unavailable

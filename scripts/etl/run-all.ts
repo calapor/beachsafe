@@ -21,6 +21,7 @@ async function main() {
   run("etl/ingest-rnli.ts");
   run("etl/compute-astro.ts");
   run("etl/seed-incidents.ts");
+  run("etl/enrich-incident-times.ts");
   // Seed synthetic observations from approx_conditions as fallback when
   // real weather/wave data is unavailable (e.g. restricted network).
   run("etl/seed-synthetic-obs.ts");

@@ -52,8 +52,11 @@ CREATE TABLE IF NOT EXISTS incidents (
   description  TEXT,
   source_url   TEXT,
   source_type  TEXT,
-  external_id  TEXT
+  external_id  TEXT,
+  hour_of_day  SMALLINT
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS incidents_beach_date_title_key ON incidents(beach_id, date, title);
 
 CREATE TABLE IF NOT EXISTS incident_fingerprints (
   incident_id  INTEGER PRIMARY KEY REFERENCES incidents(id),

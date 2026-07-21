@@ -36,15 +36,23 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
   const incidentId = parseInt(id, 10);
   if (isNaN(incidentId)) notFound();
 
-  const incident = await getIncidentById(incidentId) as {
-    id: number; beach_id: number; date: string; type: string; severity: number; casualties: number;
+  let incident: {
+    id: number; beach_id: number; date: unknown; type: string; severity: number; casualties: number;
     title: string; description: string; source_url: string; source_type: string;
     features: unknown; beach_slug: string; beach_name: string; lat: number; lon: number;
-  } | null;
+    hour_of_day: number | null;
+  } | null = null;
+
+  try {
+    incident = await getIncidentById(incidentId) as typeof incident;
+  } catch {
+    notFound();
+  }
+
   if (!incident) notFound();
 
-  const isoDate = incident.date instanceof Date
-    ? incident.date.toISOString().slice(0, 10)
+  const isoDate = (incident.date as unknown) instanceof Date
+    ? (incident.date as Date).toISOString().slice(0, 10)
     : String(incident.date).slice(0, 10);
   const bearing = BEACH_BEARING[incident.beach_slug] ?? 270;
 
@@ -60,7 +68,7 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
     wind_dir_deg?: number | null; sea_temp_c?: number | null;
   }>;
 
-  const dayOf = obs7.find((r) => (r.date instanceof Date ? r.date.toISOString() : String(r.date)).slice(0, 10) === isoDate) ?? obs7[obs7.length - 1];
+  const dayOf = obs7.find((r) => ((r.date as unknown) instanceof Date ? (r.date as Date).toISOString() : String(r.date)).slice(0, 10) === isoDate) ?? obs7[obs7.length - 1];
 
   // Feature vector for this incident
   const fv = fingerprint(obs7 as never, bearing);

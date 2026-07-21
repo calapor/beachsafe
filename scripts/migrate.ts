@@ -23,6 +23,8 @@ async function main() {
   console.log("Beaches seeded.");
 
   await sql.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS external_id TEXT`);
+  await sql.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS hour_of_day SMALLINT`);
+  await sql.query(`CREATE UNIQUE INDEX IF NOT EXISTS incidents_beach_date_title_key ON incidents(beach_id, date, title)`);
   console.log("Schema migrations applied.");
 }
 

@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "migrate": "tsx --env-file .env.local scripts/migrate.ts",
-    "etl": "tsx --env-file .env.local scripts/etl/run-all.ts"
+    "etl": "tsx --env-file .env.local scripts/etl/run-all.ts",
+    "fingerprints": "tsx --env-file .env.local scripts/etl/build-fingerprints.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

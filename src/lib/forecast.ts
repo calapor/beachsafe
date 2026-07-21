@@ -155,6 +155,37 @@ function moonDataForDay(date: Date): { illum: number; phase: number } {
   return { illum: m.fraction, phase: m.phase };
 }
 
+// Project tide times forward by N days using the semi-diurnal period (~12h 25min = 745 min)
+function projectTideTimes(
+  baseTimes: string | null,
+  baseDateStr: string,
+  targetDateStr: string
+): string | null {
+  if (!baseTimes) return null;
+  const PERIOD_MINS = 745;
+  const baseMs  = new Date(baseDateStr  + "T00:00:00Z").getTime();
+  const targetMs = new Date(targetDateStr + "T00:00:00Z").getTime();
+  const daysDiff = (targetMs - baseMs) / (24 * 60 * 60 * 1000);
+  // Total elapsed minutes, modulo one tidal cycle
+  const offsetMins = Math.round((daysDiff * 24 * 60) % PERIOD_MINS);
+
+  const projected = baseTimes
+    .split(",")
+    .map((t) => {
+      const parts = t.trim().split(":");
+      const h = parseInt(parts[0], 10);
+      const m = parseInt(parts[1] ?? "0", 10);
+      if (isNaN(h) || isNaN(m)) return null;
+      const shifted = ((h * 60 + m) + offsetMins) % (24 * 60);
+      const hh = Math.floor(shifted / 60).toString().padStart(2, "0");
+      const mm = (shifted % 60).toString().padStart(2, "0");
+      return `${hh}:${mm}`;
+    })
+    .filter(Boolean);
+
+  return projected.length ? projected.join(",") : null;
+}
+
 function tideRangeForSlug(slug: string, phase: number): number {
   const ranges = BASE_TIDE_RANGE[slug] ?? { spring: 3.5, neap: 2.0 };
   const dist = Math.min(phase, 1 - phase);
@@ -164,7 +195,8 @@ function tideRangeForSlug(slug: string, phase: number): number {
 export async function getForecastDays(
   beach: { slug: string; lat: number; lon: number },
   fingerprints: Array<{ incident_id: number; date: string; title: string; type: string; severity: number; features: unknown }>,
-  days = 5
+  days = 5,
+  lastTideObs?: { date: string; high_tide_times: string | null; low_tide_times: string | null }
 ): Promise<ForecastDay[]> {
   const [metPoints, waveByDay] = await Promise.all([
     fetchMetForecast(beach.lat, beach.lon),
@@ -193,6 +225,13 @@ export async function getForecastDays(
     const { illum, phase } = moonDataForDay(d);
     const tideRange = tideRangeForSlug(beach.slug, phase);
 
+    const projectedHighTide = lastTideObs
+      ? projectTideTimes(lastTideObs.high_tide_times, lastTideObs.date, dateStr)
+      : null;
+    const projectedLowTide = lastTideObs
+      ? projectTideTimes(lastTideObs.low_tide_times, lastTideObs.date, dateStr)
+      : null;
+
     const obs: ObsRow = {
       date: dateStr,
       mean_wind_knots: met.meanWind ?? null,
@@ -203,9 +242,11 @@ export async function getForecastDays(
       moon_illum: illum,
       tide_range_m: tideRange,
       wind_dir_deg: met.windDir ?? null,
+      high_tide_times: projectedHighTide,
+      low_tide_times: projectedLowTide,
     };
 
-    const fv = fingerprint([obs], bearing);
+    const fv = fingerprint([obs], bearing, { lat: beach.lat, lon: beach.lon });
     const matches = matchAll(fv, fps);
     const topScore = matches[0]?.score ?? 0;
 

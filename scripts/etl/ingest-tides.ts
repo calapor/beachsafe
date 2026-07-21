@@ -8,10 +8,9 @@ const BEACHES = [
   { slug: "skerries",      stationId: "Dublin Port" },
 ];
 
-// Smoothing window: 30 min at 5-min resolution = 6 points each side
 const SMOOTH_HALF = 6;
-// Minimum separation between consecutive highs or lows: 3 hours = 36 five-minute steps
 const MIN_SEP_STEPS = 36;
+const CHUNK = 500;
 
 function smoothSeries(vals: (number | null)[]): (number | null)[] {
   return vals.map((_, i) => {
@@ -37,7 +36,6 @@ function findExtrema(times: string[], vals: (number | null)[], type: "max" | "mi
 
     const isExtreme = type === "max" ? v >= prev && v >= next : v <= prev && v <= next;
     if (isExtreme && i - lastIdx >= MIN_SEP_STEPS) {
-      // Extract HH:MM from ISO time string
       const timePart = times[i].split("T")[1]?.slice(0, 5) ?? "";
       if (timePart) results.push(timePart);
       lastIdx = i;
@@ -58,6 +56,14 @@ function buildErddapUrl(stationId: string, fromDate: string, toDate: string): st
   return `${base}?${encodeURIComponent(`${fields}&${constraints.join("&")}`)}`;
 }
 
+async function getLastObsDate(beachId: number): Promise<string | null> {
+  const rows = await sql`
+    SELECT MAX(date)::text AS max_date FROM observations
+    WHERE beach_id = ${beachId} AND tide_range_m IS NOT NULL
+  `;
+  return (rows[0] as { max_date: string | null }).max_date ?? null;
+}
+
 async function fetchTideReadings(stationId: string, fromDate: string, toDate: string) {
   const url = buildErddapUrl(stationId, fromDate, toDate);
   console.log(`  Fetching tides: ${stationId} from ${fromDate} to ${toDate}`);
@@ -68,7 +74,6 @@ async function fetchTideReadings(stationId: string, fromDate: string, toDate: st
   }
   const text = await res.text();
   const lines = text.trim().split("\n");
-  // ERDDAP CSV: header row, units row, then data
   if (lines.length < 3) return [];
 
   const headers = lines[0].split(",").map((h) => h.trim().toLowerCase().replace(/[^a-z0-9_]/g, ""));
@@ -92,13 +97,15 @@ async function fetchTideReadings(stationId: string, fromDate: string, toDate: st
 }
 
 async function ingestTidesForStation(beachId: number, stationId: string) {
-  const fromDate = "2006-01-01T00:00:00Z";
+  const lastDate = await getLastObsDate(beachId);
+  const fromDate = lastDate
+    ? new Date(new Date(lastDate).getTime() - 7 * 86400_000).toISOString().replace(".000Z", "Z").split("T")[0] + "T00:00:00Z"
+    : "2006-01-01T00:00:00Z";
   const toDate = new Date().toISOString().split("T")[0] + "T23:59:59Z";
 
   const records = await fetchTideReadings(stationId, fromDate, toDate);
   if (!records.length) return;
 
-  // Group by calendar date
   const byDate: Record<string, { times: string[]; levels: (number | null)[] }> = {};
   for (const r of records) {
     const date = r.time.split("T")[0];
@@ -110,30 +117,45 @@ async function ingestTidesForStation(beachId: number, stationId: string) {
   const dates = Object.keys(byDate).sort();
   console.log(`  Aggregating ${dates.length} tide days for ${stationId}`);
 
+  // Compute daily summaries first (CPU-bound, no I/O)
+  const rows: Array<{ date: string; tideRange: number; highTimes: string | null; lowTimes: string | null }> = [];
   for (const date of dates) {
     const { times, levels } = byDate[date];
     const cleanLevels = levels.filter((v): v is number => v !== null);
     if (!cleanLevels.length) continue;
 
-    const tideRange = Math.max(...cleanLevels) - Math.min(...cleanLevels);
-    const highTimes = findExtrema(times, levels, "max");
-    const lowTimes = findExtrema(times, levels, "min");
+    rows.push({
+      date,
+      tideRange: Math.max(...cleanLevels) - Math.min(...cleanLevels),
+      highTimes: findExtrema(times, levels, "max").join(",") || null,
+      lowTimes:  findExtrema(times, levels, "min").join(",") || null,
+    });
+  }
 
-    await sql`
-      INSERT INTO observations (beach_id, date, tide_range_m, high_tide_times, low_tide_times, source_flags)
-      VALUES (
-        ${beachId}, ${date}::date,
-        ${tideRange},
-        ${highTimes.join(",") || null},
-        ${lowTimes.join(",") || null},
-        '{"tide":"gauge"}'::jsonb
-      )
-      ON CONFLICT (beach_id, date) DO UPDATE SET
-        tide_range_m    = EXCLUDED.tide_range_m,
-        high_tide_times = EXCLUDED.high_tide_times,
-        low_tide_times  = EXCLUDED.low_tide_times,
-        source_flags    = COALESCE(observations.source_flags, '{}'::jsonb) || EXCLUDED.source_flags
-    `;
+  // Bulk upsert in chunks of CHUNK rows
+  for (let start = 0; start < rows.length; start += CHUNK) {
+    const chunk = rows.slice(start, start + CHUNK);
+    const placeholders: string[] = [];
+    const vals: unknown[] = [];
+    let p = 1;
+
+    for (const row of chunk) {
+      vals.push(beachId, row.date, row.tideRange, row.highTimes, row.lowTimes);
+      placeholders.push(`($${p},$${p+1}::date,$${p+2},$${p+3},$${p+4},'{"tide":"gauge"}'::jsonb)`);
+      p += 5;
+    }
+
+    console.log(`  Upserting tides ${start + 1}–${start + chunk.length} / ${rows.length}`);
+    await sql.query(
+      `INSERT INTO observations (beach_id, date, tide_range_m, high_tide_times, low_tide_times, source_flags)
+       VALUES ${placeholders.join(",")}
+       ON CONFLICT (beach_id, date) DO UPDATE SET
+         tide_range_m    = EXCLUDED.tide_range_m,
+         high_tide_times = EXCLUDED.high_tide_times,
+         low_tide_times  = EXCLUDED.low_tide_times,
+         source_flags    = COALESCE(observations.source_flags, '{}'::jsonb) || EXCLUDED.source_flags`,
+      vals
+    );
   }
 }
 

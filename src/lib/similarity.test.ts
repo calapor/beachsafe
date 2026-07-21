@@ -72,19 +72,23 @@ describe("score", () => {
   const perfect: FeatureVector = {
     meanWind: 0.5, maxGust: 0.5, maxWave: 0.5, totalRain: 0.5,
     pressureDrop: 0.5, moonIllum: 0.5, tideRange: 0.5, onshoreComponent: 0.5,
+    daylightHighTide: 0.5, risingFraction: 0.5,
   };
 
   it("identical vectors score 1.0", () => {
     expect(score(perfect, perfect)).toBeCloseTo(1.0, 3);
   });
 
-  it("very different vectors score near 0", () => {
+  it("very different vectors score well below 1.0", () => {
     const zero: FeatureVector = normalizeFeatures({});
     const high: FeatureVector = {
       meanWind: 1, maxGust: 1, maxWave: 1, totalRain: 1,
       pressureDrop: 1, moonIllum: 1, tideRange: 1, onshoreComponent: 1,
+      daylightHighTide: 1, risingFraction: 1,
     };
-    expect(score(zero, high)).toBeLessThan(0.15);
+    // zero has neutral 0.5 for tide features, so max diff is 0.5 on those dims;
+    // original 8 features have diff=1 → score is pulled down but not as low as pre-tide-features
+    expect(score(zero, high)).toBeLessThan(0.25);
   });
 
   it("score is symmetric", () => {

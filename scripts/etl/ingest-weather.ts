@@ -21,12 +21,24 @@ function nullNum(v: unknown): number | null {
   return isNaN(n) ? null : n;
 }
 
+async function getLastWeatherDate(beachId: number): Promise<string | null> {
+  const rows = await sql`
+    SELECT MAX(date)::text AS max_date FROM observations
+    WHERE beach_id = ${beachId} AND mean_wind_knots IS NOT NULL
+  `;
+  return (rows[0] as { max_date: string | null }).max_date ?? null;
+}
+
 export async function ingestWeatherForBeach(beachId: number, lat: number, lon: number) {
+  const lastDate = await getLastWeatherDate(beachId);
+  const startDate = lastDate
+    ? new Date(new Date(lastDate).getTime() - 7 * 86400_000).toISOString().split("T")[0]
+    : "1950-01-01";
   const today = new Date().toISOString().split("T")[0];
   const url =
     `https://archive-api.open-meteo.com/v1/archive` +
     `?latitude=${lat}&longitude=${lon}` +
-    `&start_date=1950-01-01&end_date=${today}` +
+    `&start_date=${startDate}&end_date=${today}` +
     `&daily=precipitation_sum,temperature_2m_max,temperature_2m_min,wind_gusts_10m_max,wind_direction_10m_dominant` +
     `&hourly=wind_speed_10m,pressure_msl` +
     `&wind_speed_unit=kn&timezone=UTC`;
@@ -67,15 +79,15 @@ export async function ingestWeatherForBeach(beachId: number, lat: number, lon: n
   // 9 params per row × 500 rows = 4500 params, well within Postgres limits.
   const COL_COUNT = 9;
   for (let chunkStart = 0; chunkStart < days.length; chunkStart += CHUNK) {
-    const chunk = days.slice(chunkStart, chunkStart + CHUNK);
+    const chunkEnd = Math.min(chunkStart + CHUNK, days.length);
     console.log(`  Progress: ${chunkStart}/${days.length}`);
 
     const placeholders: string[] = [];
     const vals: unknown[] = [];
     let p = 1;
 
-    for (const date of chunk) {
-      const i = days.indexOf(date);
+    for (let i = chunkStart; i < chunkEnd; i++) {
+      const date = days[i];
       const hourly = hourlyByDate[date] ?? { wind: [], pressure: [] };
 
       vals.push(
