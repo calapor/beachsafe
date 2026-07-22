@@ -23,6 +23,29 @@ async function main() {
   console.log("Beaches seeded.");
 
   await sql.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS external_id TEXT`);
+  await sql.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS time_of_day TIME`);
+  await sql.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS time_source TEXT CHECK (time_source IN ('rnli','reported','unknown')) DEFAULT 'unknown'`);
+  await sql.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS activity TEXT CHECK (activity IN ('swimmer','watercraft','shore','other','unknown')) DEFAULT 'unknown'`);
+  await sql.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS activity_source TEXT`);
+  await sql.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS condition_related BOOLEAN`);
+  await sql.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS exclusion_cause TEXT`);
+  // Deduplicate before creating the index (keeps the row with the lowest id per external_id)
+  await sql.query(`
+    DELETE FROM incident_fingerprints
+    WHERE incident_id IN (
+      SELECT id FROM incidents
+      WHERE external_id IS NOT NULL
+        AND id NOT IN (SELECT MIN(id) FROM incidents WHERE external_id IS NOT NULL GROUP BY external_id)
+    )
+  `);
+  await sql.query(`
+    DELETE FROM incidents
+    WHERE external_id IS NOT NULL
+      AND id NOT IN (SELECT MIN(id) FROM incidents WHERE external_id IS NOT NULL GROUP BY external_id)
+  `);
+  // Drop and recreate to ensure it's a non-partial index (earlier versions created it as partial)
+  await sql.query(`DROP INDEX IF EXISTS incidents_external_id`);
+  await sql.query(`CREATE UNIQUE INDEX incidents_external_id ON incidents(external_id)`);
   console.log("Schema migrations applied.");
 }
 

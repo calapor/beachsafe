@@ -21,18 +21,54 @@ function nullNum(v: unknown): number | null {
   return isNaN(n) ? null : n;
 }
 
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function fetchWithRetry(url: string, maxRetries = 5): Promise<Response> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetch(url);
+    if (res.status === 429) {
+      const retryAfter = parseInt(res.headers.get("Retry-After") ?? "0", 10);
+      const waitMs = (retryAfter > 0 ? retryAfter : 60) * 1000;
+      console.warn(`  Rate limited (429) — waiting ${waitMs / 1000}s before retry ${attempt + 1}/${maxRetries}...`);
+      await sleep(waitMs);
+      continue;
+    }
+    return res;
+  }
+  throw new Error("Max retries exceeded after rate limiting");
+}
+
 export async function ingestWeatherForBeach(beachId: number, lat: number, lon: number) {
   const today = new Date().toISOString().split("T")[0];
+
+  // Incremental: only fetch dates not yet in the DB to avoid hammering the API
+  const latestRow = await sql`
+    SELECT MAX(date)::text AS max_date FROM observations
+    WHERE beach_id = ${beachId} AND mean_wind_knots IS NOT NULL
+  `;
+  const latestDate = (latestRow[0] as { max_date: string | null })?.max_date;
+  // Re-fetch the last 7 days to catch any late-arriving corrections
+  const startDate = latestDate
+    ? new Date(new Date(latestDate).getTime() - 7 * 86400_000).toISOString().split("T")[0]
+    : "1950-01-01";
+
+  if (startDate >= today) {
+    console.log(`  Weather for beach ${beachId} is up to date (${latestDate}) — skipping`);
+    return;
+  }
+
   const url =
     `https://archive-api.open-meteo.com/v1/archive` +
     `?latitude=${lat}&longitude=${lon}` +
-    `&start_date=1950-01-01&end_date=${today}` +
+    `&start_date=${startDate}&end_date=${today}` +
     `&daily=precipitation_sum,temperature_2m_max,temperature_2m_min,wind_gusts_10m_max,wind_direction_10m_dominant` +
     `&hourly=wind_speed_10m,pressure_msl` +
     `&wind_speed_unit=kn&timezone=UTC`;
 
-  console.log(`  Fetching Open-Meteo ERA5 for beach ${beachId} (lat=${lat}, lon=${lon})`);
-  const res = await fetch(url);
+  console.log(`  Fetching Open-Meteo ERA5 for beach ${beachId} from ${startDate} to ${today}`);
+  const res = await fetchWithRetry(url);
   if (!res.ok) throw new Error(`HTTP ${res.status} from Open-Meteo`);
   const data = await res.json() as {
     daily: {
@@ -116,10 +152,13 @@ export async function ingestWeatherForBeach(beachId: number, lat: number, lon: n
 }
 
 async function main() {
-  for (const beach of BEACHES) {
+  for (let i = 0; i < BEACHES.length; i++) {
+    const beach = BEACHES[i];
     const rows = await sql`SELECT id FROM beaches WHERE slug = ${beach.slug}`;
     if (!rows.length) { console.warn(`Beach not found: ${beach.slug}`); continue; }
     await ingestWeatherForBeach((rows[0] as { id: number }).id, beach.lat, beach.lon);
+    // Brief pause between beaches to stay within Open-Meteo's rate limit
+    if (i < BEACHES.length - 1) await sleep(5000);
   }
 }
 
