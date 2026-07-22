@@ -72,11 +72,13 @@ async function enrichBatch(batch: IncidentRow[]): Promise<EnrichResult[]> {
     ],
   });
 
-  const text = msg.content[0]?.type === "text" ? msg.content[0].text.trim() : "[]";
+  let raw = msg.content[0]?.type === "text" ? msg.content[0].text.trim() : "[]";
+  // Strip markdown code fences if present (```json ... ``` or ``` ... ```)
+  raw = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
 
   let parsed: EnrichResult[];
   try {
-    parsed = JSON.parse(text);
+    parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) throw new Error("not an array");
   } catch (e) {
     console.warn(`  Failed to parse Claude response: ${e}`);

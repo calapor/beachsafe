@@ -22,7 +22,44 @@ function toHHMM(date: Date): string {
   return `${h}:${m}`;
 }
 
+async function classifyUnclassifiedRnli() {
+  // Apply keyword classification to any RNLI records the enrichment pass missed.
+  // These patterns match the reason/outcome text stored in description.
+  const result = await sql`
+    UPDATE incidents SET
+      condition_related = false,
+      exclusion_cause = CASE
+        WHEN description ILIKE '%man overboard%' OR description ILIKE '%fell overboard%' OR description ILIKE '% mob %'
+          THEN 'man_overboard'
+        WHEN description ILIKE '%medical%' OR description ILIKE '%person ill%' OR description ILIKE '%taken ill%'
+          OR description ILIKE '%cardiac%' OR description ILIKE '%heart attack%' OR description ILIKE '%unconscious%'
+          THEN 'medical'
+        WHEN description ILIKE '%engine fail%' OR description ILIKE '%mechanical%' OR description ILIKE '%machinery%'
+          OR description ILIKE '%breakdown%' OR description ILIKE '%propeller%'
+          THEN 'mechanical'
+        WHEN description ILIKE '%false alarm%' OR description ILIKE '%hoax%' OR description ILIKE '%stood down%'
+          OR description ILIKE '%unfounded%' OR description ILIKE '%nothing found%'
+          THEN 'false_alarm'
+        ELSE NULL
+      END
+    WHERE source_type = 'rnli'
+      AND condition_related IS NULL
+      AND (
+        description ILIKE '%man overboard%' OR description ILIKE '%fell overboard%' OR description ILIKE '% mob %'
+        OR description ILIKE '%medical%' OR description ILIKE '%person ill%' OR description ILIKE '%taken ill%'
+        OR description ILIKE '%cardiac%' OR description ILIKE '%heart attack%' OR description ILIKE '%unconscious%'
+        OR description ILIKE '%engine fail%' OR description ILIKE '%mechanical%' OR description ILIKE '%machinery%'
+        OR description ILIKE '%breakdown%' OR description ILIKE '%propeller%'
+        OR description ILIKE '%false alarm%' OR description ILIKE '%hoax%' OR description ILIKE '%stood down%'
+        OR description ILIKE '%unfounded%' OR description ILIKE '%nothing found%'
+      )
+  `;
+  console.log(`  Classified ${(result as unknown as { count?: number }).count ?? "?"} unclassified RNLI incidents as non-condition-related`);
+}
+
 async function main() {
+  await classifyUnclassifiedRnli();
+
   // Only fingerprint condition-driven incidents (NULL treated conservatively as relevant)
   const incidents = await sql`
     SELECT i.id, i.beach_id, i.date, b.slug,
