@@ -161,8 +161,20 @@ async function ingestRnliForBeach(beachId: number, lat: number, lon: number) {
   ` as Array<{ id: number; external_id: string }>;
   const existingMap = new Map(existingRows.map(r => [r.external_id, r.id]));
 
-  const toInsert = records.filter(r => !existingMap.has(r.externalId));
-  const toUpdate = records.filter(r =>  existingMap.has(r.externalId));
+  // Deduplicate by (date, station) within new records — multiple launches on the same
+  // day from the same station all generate the same title and the DB constraint
+  // "ON CONFLICT DO UPDATE command cannot affect row a second time" fires if two
+  // rows in the same batch would map to the same conflict key.
+  const titleKey = (r: RnliRecord) => `${r.dateStr}|${r.station}`;
+  const seenTitles = new Set<string>();
+  const toInsert = records.filter(r => {
+    if (existingMap.has(r.externalId)) return false;
+    const k = titleKey(r);
+    if (seenTitles.has(k)) return false;
+    seenTitles.add(k);
+    return true;
+  });
+  const toUpdate = records.filter(r => existingMap.has(r.externalId));
 
   // Batch INSERT new records
   for (let i = 0; i < toInsert.length; i += CHUNK_SIZE) {
