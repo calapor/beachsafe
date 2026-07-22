@@ -42,6 +42,20 @@
     }
   },
   {
+    "date": "2023-09-05",
+    "type": "drowning",
+    "severity": 5,
+    "casualties": 1,
+    "title": "Child fatally swept into sea at Fountainstown",
+    "description": "A 7-year-old girl was swept into the sea by a large wave at approximately 4:40pm. Sea conditions were choppy. An extensive search involving RNLI Crosshaven, Shannon Coast Guard helicopter, Gardaí and fire services recovered her body near the shore at approximately 7:45pm. Inquest verdict: accidental drowning.",
+    "source_url": "https://www.irishtimes.com/ireland/2023/09/06/girl-7-who-drowned-while-swimming-at-fountainstown-beach-in-co-cork-named/",
+    "source_type": "news",
+    "time_of_day": "16:40",
+    "time_source": "reported",
+    "activity": "swimmer",
+    "condition_related": true
+  },
+  {
     "date": "2021-08-15",
     "type": "near_miss",
     "severity": 2,
