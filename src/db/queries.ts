@@ -22,6 +22,7 @@ export async function getIncidentsByBeach(beachId: number) {
     FROM incidents i
     LEFT JOIN incident_fingerprints f ON f.incident_id = i.id
     WHERE i.beach_id = ${beachId}
+      AND i.condition_related IS NOT FALSE
     ORDER BY i.date DESC
   `;
 }
