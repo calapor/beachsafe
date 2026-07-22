@@ -40,6 +40,8 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
     id: number; beach_id: number; date: string; type: string; severity: number; casualties: number;
     title: string; description: string; source_url: string; source_type: string;
     features: unknown; beach_slug: string; beach_name: string; lat: number; lon: number;
+    time_of_day?: string | null; time_source?: string | null;
+    activity?: string | null; condition_related?: boolean | null;
   } | null;
   if (!incident) notFound();
 
@@ -111,7 +113,22 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
             )}
           </div>
           <h1 className="text-2xl font-bold mt-2">{incident.title}</h1>
-          <p className="text-blue-300 text-sm mt-1">{isoDate}</p>
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            <p className="text-blue-300 text-sm">{isoDate}</p>
+            {incident.time_of_day && (
+              <span className="text-xs bg-blue-700 text-blue-100 px-2 py-0.5 rounded-full">
+                {String(incident.time_of_day).slice(0, 5)}
+                {incident.time_source && incident.time_source !== "unknown" && (
+                  <span className="opacity-70 ml-1">({incident.time_source})</span>
+                )}
+              </span>
+            )}
+            {incident.activity && incident.activity !== "unknown" && (
+              <span className="text-xs bg-blue-700 text-blue-100 px-2 py-0.5 rounded-full capitalize">
+                {incident.activity}
+              </span>
+            )}
+          </div>
         </div>
       </header>
 

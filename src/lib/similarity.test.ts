@@ -5,6 +5,9 @@ import {
   score,
   alertLevel,
   matchAll,
+  deriveTideState,
+  explain,
+  baselineContrast,
   type ObsRow,
   type FeatureVector,
 } from "./similarity";
@@ -14,12 +17,16 @@ describe("normalizeFeatures", () => {
     const f = normalizeFeatures({});
     expect(f.meanWind).toBe(0);
     expect(f.maxWave).toBe(0);
+    expect(f.tideState).toBe(0);
+    expect(f.tideConfidence).toBe(0);
+    expect(f.seaTempCold).toBe(0);
   });
 
   it("passes through provided values", () => {
-    const f = normalizeFeatures({ maxWave: 0.8, moonIllum: 0.5 });
+    const f = normalizeFeatures({ maxWave: 0.8, moonIllum: 0.5, tideState: -0.5 });
     expect(f.maxWave).toBe(0.8);
     expect(f.moonIllum).toBe(0.5);
+    expect(f.tideState).toBe(-0.5);
   });
 });
 
@@ -43,14 +50,12 @@ describe("fingerprint", () => {
   });
 
   it("computes onshore component correctly for head-on wind", () => {
-    // beach bearing 225° (SW-facing), wind from SW (225°) → onshore
     const obs = [makeObs({ wind_dir_deg: 225 })];
     const f = fingerprint(obs, 225);
     expect(f.onshoreComponent).toBeCloseTo(1, 2);
   });
 
   it("sets offshore component to 0 (clamped)", () => {
-    // wind from 45° (NE) into SW-facing beach → offshore
     const obs = [makeObs({ wind_dir_deg: 45 })];
     const f = fingerprint(obs, 225);
     expect(f.onshoreComponent).toBe(0);
@@ -63,16 +68,93 @@ describe("fingerprint", () => {
       makeObs({ date: "2020-06-27", mslp_hpa: 1010 }),
     ];
     const f = fingerprint(window, 200);
-    // pressure drop = 1020 - 1010 = 10 → normalised as 10/30
     expect(f.pressureDrop).toBeCloseTo(10 / 30, 3);
+  });
+
+  it("computes seaTempCold correctly", () => {
+    const cold = [makeObs({ sea_temp_c: 5 })];
+    const warm = [makeObs({ sea_temp_c: 20 })];
+    expect(fingerprint(cold, 200).seaTempCold).toBeCloseTo((15 - 5) / 15, 3);
+    expect(fingerprint(warm, 200).seaTempCold).toBe(0); // warm → no cold risk
+  });
+
+  it("computes wavePeriod normalised to period/20", () => {
+    const obs = [makeObs({ wave_period_s: 10 })];
+    expect(fingerprint(obs, 200).wavePeriod).toBeCloseTo(10 / 20, 3);
+  });
+
+  it("is backward-compatible without opts (tideConfidence=0)", () => {
+    const obs = [makeObs()];
+    const f = fingerprint(obs, 200);
+    expect(f.tideConfidence).toBe(0);
+    expect(f.tideState).toBe(0);
+  });
+
+  it("reads tide state from opts.timeOfDay", () => {
+    const obs = [makeObs()];
+    // HW at 06:00, LW at 12:10 → at 09:00 we're ebbing
+    const f = fingerprint(obs, 200, {
+      timeOfDay: "09:00",
+      highTideTimes: "06:00",
+      lowTideTimes: "12:10",
+    });
+    expect(f.tideConfidence).toBe(1);
+    expect(f.tideState).toBeLessThan(0); // ebbing
+  });
+});
+
+describe("deriveTideState", () => {
+  const HIGH = "06:00,18:20";
+  const LOW  = "00:10,12:10";
+
+  it("known time during flood: tideState > 0, confidence = 1", () => {
+    // 03:00 is between LW(00:10) and HW(06:00) → flooding
+    const r = deriveTideState("03:00", HIGH, LOW);
+    expect(r.tideConfidence).toBe(1);
+    expect(r.tideState).toBeGreaterThan(0);
+  });
+
+  it("known time during ebb: tideState < 0, confidence = 1", () => {
+    // 09:00 is between HW(06:00) and LW(12:10) → ebbing
+    const r = deriveTideState("09:00", HIGH, LOW);
+    expect(r.tideConfidence).toBe(1);
+    expect(r.tideState).toBeLessThan(0);
+  });
+
+  it("at HW: hoursFromHigh ≈ 0, confidence = 1", () => {
+    const r = deriveTideState("06:01", HIGH, LOW);
+    expect(r.tideConfidence).toBe(1);
+    expect(r.hoursFromHigh).toBeCloseTo(0, 1);
+  });
+
+  it("missing tide times → confidence = 0, zeros", () => {
+    const r = deriveTideState(null, null, null);
+    expect(r.tideConfidence).toBe(0);
+    expect(r.tideState).toBe(0);
+    expect(r.hoursFromHigh).toBe(0);
+  });
+
+  it("unknown time + no daylight → confidence = 0", () => {
+    const r = deriveTideState(null, HIGH, LOW);
+    expect(r.tideConfidence).toBe(0);
+  });
+
+  it("unknown time + daylight window → confidence ≈ 0.5, state derived", () => {
+    const r = deriveTideState(null, HIGH, LOW, { sunrise: "06:30", sunset: "21:00" });
+    expect(r.tideConfidence).toBeCloseTo(0.5, 5);
+    // Daylight covers flood and ebb — state should be between -1 and +1
+    expect(r.tideState).toBeGreaterThanOrEqual(-1);
+    expect(r.tideState).toBeLessThanOrEqual(1);
+    // hoursFromHigh should be >0 (LW reached during daylight)
+    expect(r.hoursFromHigh).toBeGreaterThan(0);
   });
 });
 
 describe("score", () => {
-  const perfect: FeatureVector = {
+  const perfect: FeatureVector = normalizeFeatures({
     meanWind: 0.5, maxGust: 0.5, maxWave: 0.5, totalRain: 0.5,
     pressureDrop: 0.5, moonIllum: 0.5, tideRange: 0.5, onshoreComponent: 0.5,
-  };
+  });
 
   it("identical vectors score 1.0", () => {
     expect(score(perfect, perfect)).toBeCloseTo(1.0, 3);
@@ -80,10 +162,12 @@ describe("score", () => {
 
   it("very different vectors score near 0", () => {
     const zero: FeatureVector = normalizeFeatures({});
-    const high: FeatureVector = {
+    // Set ALL non-tide scored features to 1 so every feature has diff=1
+    const high: FeatureVector = normalizeFeatures({
       meanWind: 1, maxGust: 1, maxWave: 1, totalRain: 1,
       pressureDrop: 1, moonIllum: 1, tideRange: 1, onshoreComponent: 1,
-    };
+      seaTempCold: 1, wavePeriod: 1, warmCalm: 1,
+    });
     expect(score(zero, high)).toBeLessThan(0.15);
   });
 
@@ -91,6 +175,22 @@ describe("score", () => {
     const a: FeatureVector = normalizeFeatures({ maxWave: 0.3 });
     const b: FeatureVector = normalizeFeatures({ maxWave: 0.6 });
     expect(score(a, b)).toBeCloseTo(score(b, a), 5);
+  });
+
+  it("tide features excluded when either tideConfidence=0 (no penalty)", () => {
+    // candidate has tide data, reference doesn't → tide features should be excluded
+    const withTide: FeatureVector = normalizeFeatures({ tideState: -1, hoursFromHigh: 1, tideConfidence: 1 });
+    const noTide: FeatureVector = normalizeFeatures({ tideState: 1, hoursFromHigh: 0, tideConfidence: 0 });
+    // Should NOT score near zero despite opposite tide values, because noTide has confidence=0
+    expect(score(withTide, noTide)).toBeGreaterThan(0.5);
+  });
+
+  it("tide features included when both tideConfidence>0", () => {
+    const ebbing:   FeatureVector = normalizeFeatures({ tideState: -1, tideConfidence: 1 });
+    const flooding: FeatureVector = normalizeFeatures({ tideState: +1, tideConfidence: 1 });
+    const sameEbb: FeatureVector  = normalizeFeatures({ tideState: -1, tideConfidence: 1 });
+    // Same tideState should score higher than opposite
+    expect(score(ebbing, sameEbb)).toBeGreaterThan(score(ebbing, flooding));
   });
 });
 
@@ -122,5 +222,67 @@ describe("matchAll", () => {
 
   it("empty fingerprints returns empty results", () => {
     expect(matchAll(normalizeFeatures({}), [])).toEqual([]);
+  });
+});
+
+describe("explain", () => {
+  it("contributions sum correctly (total ~= weighted average ≈ score)", () => {
+    const a = normalizeFeatures({ maxWave: 0.8, onshoreComponent: 0.9 });
+    const b = normalizeFeatures({ maxWave: 0.8, onshoreComponent: 0.9 });
+    const contributions = explain(a, b);
+    const totalPct = contributions.reduce((s, c) => s + c.contributionPct, 0);
+    expect(totalPct).toBeCloseTo(100, 1);
+  });
+
+  it("sorted by contribution descending", () => {
+    const a = normalizeFeatures({ onshoreComponent: 0.9, maxWave: 0.3 });
+    const b = normalizeFeatures({ onshoreComponent: 0.9, maxWave: 0.3 });
+    const contributions = explain(a, b);
+    for (let i = 0; i < contributions.length - 1; i++) {
+      expect(contributions[i].contribution).toBeGreaterThanOrEqual(contributions[i + 1].contribution);
+    }
+  });
+
+  it("identical values → distance = 0", () => {
+    const a = normalizeFeatures({ maxWave: 0.5 });
+    const contributions = explain(a, a);
+    const maxWaveItem = contributions.find((c) => c.key === "maxWave");
+    expect(maxWaveItem?.distance).toBe(0);
+  });
+});
+
+describe("baselineContrast", () => {
+  it("deviation is abs(candidate - baseline)", () => {
+    const candidate = normalizeFeatures({ maxWave: 0.8 });
+    const baseline  = normalizeFeatures({ maxWave: 0.3 });
+    const devs = baselineContrast(candidate, baseline);
+    const waveEntry = devs.find((d) => d.key === "maxWave");
+    expect(waveEntry?.deviation).toBeCloseTo(0.5, 3);
+  });
+
+  it("isDiscriminating when far from baseline AND close to incident", () => {
+    const candidate = normalizeFeatures({ maxWave: 0.8 });
+    const baseline  = normalizeFeatures({ maxWave: 0.1 }); // unusual
+    const reference = normalizeFeatures({ maxWave: 0.8 }); // matches incident
+    const devs = baselineContrast(candidate, baseline, reference);
+    const waveEntry = devs.find((d) => d.key === "maxWave");
+    expect(waveEntry?.isDiscriminating).toBe(true);
+  });
+
+  it("not discriminating when typical (close to baseline)", () => {
+    const candidate = normalizeFeatures({ maxWave: 0.3 });
+    const baseline  = normalizeFeatures({ maxWave: 0.3 });
+    const devs = baselineContrast(candidate, baseline);
+    const waveEntry = devs.find((d) => d.key === "maxWave");
+    expect(waveEntry?.isDiscriminating).toBe(false);
+  });
+
+  it("sorted by deviation descending", () => {
+    const candidate = normalizeFeatures({ maxWave: 0.9, moonIllum: 0.5 });
+    const baseline  = normalizeFeatures({ maxWave: 0.1, moonIllum: 0.4 });
+    const devs = baselineContrast(candidate, baseline);
+    for (let i = 0; i < devs.length - 1; i++) {
+      expect(devs[i].deviation).toBeGreaterThanOrEqual(devs[i + 1].deviation);
+    }
   });
 });

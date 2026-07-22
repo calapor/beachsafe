@@ -4,7 +4,9 @@ import { getBeachBySlug, getIncidentsByBeach, getRecentObservations, getAllFinge
 import { AlertBadge } from "@/components/alert-badge";
 import { MoonGlyph } from "@/components/moon-glyph";
 import { ConditionsChart } from "@/components/conditions-chart";
+import { WhyFlaggedPanel } from "@/components/why-flagged-panel";
 import { getForecastDays } from "@/lib/forecast";
+import { FEATURE_LABELS } from "@/lib/feature-labels";
 import type { ForecastDay } from "@/lib/forecast";
 import type { FeatureVector } from "@/lib/similarity";
 
@@ -34,60 +36,46 @@ const ALERT_REASON: Record<string, string> = {
 function describeFeatures(fv: FeatureVector): string[] {
   const reasons: string[] = [];
 
-  // Onshore wind component (weight 2.5 — most impactful)
   if (fv.onshoreComponent > 0.7)
-    reasons.push("Wind driving directly onshore");
+    reasons.push(FEATURE_LABELS.onshoreComponent.label + ": direct");
   else if (fv.onshoreComponent > 0.35)
-    reasons.push("Onshore wind component");
+    reasons.push(FEATURE_LABELS.onshoreComponent.label + ": partial");
 
-  // Max wave (weight 2.0)
-  const waveM = (fv.maxWave * 5).toFixed(1);
   if (fv.maxWave > 0.5)
-    reasons.push(`Heavy swell (${waveM} m)`);
+    reasons.push(`Heavy swell (${FEATURE_LABELS.maxWave.format(fv.maxWave)})`);
   else if (fv.maxWave > 0.2)
-    reasons.push(`Moderate swell (${waveM} m)`);
+    reasons.push(`Moderate swell (${FEATURE_LABELS.maxWave.format(fv.maxWave)})`);
 
-  // Tide range (weight 1.5)
-  const tideM = (fv.tideRange * 5).toFixed(1);
+  if (fv.tideState < -0.5)
+    reasons.push("Ebbing tide (rip current risk)");
+  else if (fv.tideState > 0.5)
+    reasons.push("Flooding tide");
+
   if (fv.tideRange > 0.65)
-    reasons.push(`Spring tides (${tideM} m range)`);
+    reasons.push(`Spring tides (${FEATURE_LABELS.tideRange.format(fv.tideRange)} range)`);
   else if (fv.tideRange > 0.35)
-    reasons.push(`Moderate tidal range (${tideM} m)`);
+    reasons.push(`Moderate tidal range (${FEATURE_LABELS.tideRange.format(fv.tideRange)})`);
 
-  // Pressure drop (weight 1.5)
-  const dropHpa = (fv.pressureDrop * 30).toFixed(0);
   if (fv.pressureDrop > 0.4)
-    reasons.push(`Rapid pressure drop (${dropHpa} hPa)`);
+    reasons.push(`Rapid pressure drop (${FEATURE_LABELS.pressureDrop.format(fv.pressureDrop)})`);
   else if (fv.pressureDrop > 0.17)
-    reasons.push(`Falling pressure (${dropHpa} hPa)`);
+    reasons.push(`Falling pressure (${FEATURE_LABELS.pressureDrop.format(fv.pressureDrop)})`);
 
-  // Max gust (weight 1.2)
-  const gustKts = (fv.maxGust * 50).toFixed(0);
   if (fv.maxGust > 0.5)
-    reasons.push(`Strong gusts (${gustKts} kts)`);
+    reasons.push(`Strong gusts (${FEATURE_LABELS.maxGust.format(fv.maxGust)})`);
   else if (fv.maxGust > 0.28)
-    reasons.push(`Moderate gusts (${gustKts} kts)`);
+    reasons.push(`Moderate gusts (${FEATURE_LABELS.maxGust.format(fv.maxGust)})`);
 
-  // Mean wind (weight 1.0)
-  const windKts = (fv.meanWind * 30).toFixed(0);
   if (fv.meanWind > 0.5)
-    reasons.push(`Sustained high winds (${windKts} kts)`);
+    reasons.push(`Sustained high winds (${FEATURE_LABELS.meanWind.format(fv.meanWind)})`);
   else if (fv.meanWind > 0.3)
-    reasons.push(`Elevated sustained winds (${windKts} kts)`);
+    reasons.push(`Elevated winds (${FEATURE_LABELS.meanWind.format(fv.meanWind)})`);
 
-  // Total rain (weight 0.6)
-  const rainMm = (fv.totalRain * 50).toFixed(0);
-  if (fv.totalRain > 0.4)
-    reasons.push(`Heavy rainfall (${rainMm} mm)`);
-  else if (fv.totalRain > 0.2)
-    reasons.push(`Rainfall (${rainMm} mm)`);
+  if (fv.wavePeriod > 0.5)
+    reasons.push(`Long-period swell (${FEATURE_LABELS.wavePeriod.format(fv.wavePeriod)})`);
 
-  // Moon phase (weight 0.5)
-  const illumPct = Math.round(fv.moonIllum * 100);
-  if (fv.moonIllum > 0.85)
-    reasons.push(`Full moon (${illumPct}% illuminated)`);
-  else if (fv.moonIllum < 0.08)
-    reasons.push(`New moon`);
+  if (fv.seaTempCold > 0.4)
+    reasons.push("Cold water shock risk");
 
   return reasons;
 }
@@ -114,7 +102,6 @@ function ForecastStrip({ days }: { days: ForecastDay[] }) {
               <p className="font-semibold mb-1">{ALERT_REASON[d.alertLevel]}</p>
               <p className="text-gray-400 mb-2">{(d.score * 100).toFixed(0)}% similarity to historical incidents</p>
 
-              {/* Driving factors */}
               {driverList.length > 0 && (
                 <div className="mb-2">
                   <p className="text-gray-500 uppercase tracking-wide text-[10px] mb-1">Contributing factors</p>
@@ -129,7 +116,6 @@ function ForecastStrip({ days }: { days: ForecastDay[] }) {
                 </div>
               )}
 
-              {/* Top matching incidents */}
               {d.topMatches.length > 0 && (
                 <div className="border-t border-gray-700 pt-2">
                   <p className="text-gray-500 uppercase tracking-wide text-[10px] mb-1">Closest historical matches</p>
@@ -173,6 +159,7 @@ export default async function BeachPage({ params }: { params: Promise<{ slug: st
   }
 
   const todayAlert = forecastDays[0]?.alertLevel ?? "none";
+  const today = forecastDays[0];
 
   const chartData = (recentObs as Array<{ date: string; mean_wind_knots?: number | null; wave_height_m?: number | null; rain_mm?: number | null }>)
     .slice()
@@ -204,6 +191,16 @@ export default async function BeachPage({ params }: { params: Promise<{ slug: st
           </div>
           <AlertBadge level={todayAlert} size="lg" />
         </section>
+
+        {/* Persistent "Why is this flagged?" panel */}
+        {today && today.topMatches[0] && (
+          <WhyFlaggedPanel
+            slug={slug}
+            contributions={today.contributions}
+            contrast={today.baselineContrast}
+            topMatch={today.topMatches[0]}
+          />
+        )}
 
         {/* 5-day forecast strip */}
         {forecastDays.length > 0 && (
@@ -242,7 +239,7 @@ export default async function BeachPage({ params }: { params: Promise<{ slug: st
             <p className="text-sm text-gray-500">No incidents loaded yet — run <code className="bg-gray-100 px-1 rounded text-xs">pnpm etl</code></p>
           ) : (
             <div className="space-y-3">
-              {(incidents as Array<{ id: number; date: string; type: string; title: string; description: string; severity: number; casualties: number; source_url: string }>)
+              {(incidents as Array<{ id: number; date: string; type: string; title: string; description: string; severity: number; casualties: number; source_url: string; activity?: string; time_of_day?: string }>)
                 .map((inc) => (
                   <Link
                     key={inc.id}
@@ -253,10 +250,15 @@ export default async function BeachPage({ params }: { params: Promise<{ slug: st
                       <p className="text-xs font-mono text-gray-400">{(inc.date instanceof Date ? inc.date.toISOString() : String(inc.date)).slice(0, 10)}</p>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${TYPE_COLOR[inc.type] ?? "bg-gray-100 text-gray-700"}`}>
                           {TYPE_LABEL[inc.type] ?? inc.type}
                         </span>
+                        {inc.activity && inc.activity !== "unknown" && (
+                          <span className="text-xs text-gray-500 px-2 py-0.5 rounded-full bg-gray-100">
+                            {inc.activity}
+                          </span>
+                        )}
                         {inc.casualties > 0 && (
                           <span className="text-xs text-red-600 font-medium">
                             {inc.casualties} casualt{inc.casualties === 1 ? "y" : "ies"}

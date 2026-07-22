@@ -42,17 +42,24 @@ CREATE TABLE IF NOT EXISTS observations (
 CREATE INDEX IF NOT EXISTS obs_beach_date ON observations(beach_id, date);
 
 CREATE TABLE IF NOT EXISTS incidents (
-  id           SERIAL PRIMARY KEY,
-  beach_id     INTEGER NOT NULL REFERENCES beaches(id),
-  date         DATE NOT NULL,
-  type         TEXT NOT NULL CHECK (type IN ('rnli_launch','drowning','rescue','near_miss')),
-  severity     INTEGER DEFAULT 1,
-  casualties   INTEGER DEFAULT 0,
-  title        TEXT NOT NULL,
-  description  TEXT,
-  source_url   TEXT,
-  source_type  TEXT,
-  external_id  TEXT
+  id               SERIAL PRIMARY KEY,
+  beach_id         INTEGER NOT NULL REFERENCES beaches(id),
+  date             DATE NOT NULL,
+  type             TEXT NOT NULL CHECK (type IN ('rnli_launch','drowning','rescue','near_miss')),
+  severity         INTEGER DEFAULT 1,
+  casualties       INTEGER DEFAULT 0,
+  title            TEXT NOT NULL,
+  description      TEXT,
+  source_url       TEXT,
+  source_type      TEXT,
+  external_id      TEXT,
+  UNIQUE (beach_id, date, title),
+  time_of_day      TIME,
+  time_source      TEXT CHECK (time_source IN ('rnli','reported','unknown')) DEFAULT 'unknown',
+  activity         TEXT CHECK (activity IN ('swimmer','watercraft','shore','other','unknown')) DEFAULT 'unknown',
+  activity_source  TEXT,
+  condition_related BOOLEAN,
+  exclusion_cause  TEXT
 );
 
 CREATE TABLE IF NOT EXISTS incident_fingerprints (

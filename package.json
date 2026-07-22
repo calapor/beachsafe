@@ -10,9 +10,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "migrate": "tsx --env-file .env.local scripts/migrate.ts",
-    "etl": "tsx --env-file .env.local scripts/etl/run-all.ts"
+    "etl": "tsx --env-file .env.local scripts/etl/run-all.ts",
+    "etl:no-weather": "tsx --env-file .env.local scripts/etl/run-all.ts --skip-weather",
+    "etl:ingest-only": "tsx --env-file .env.local scripts/etl/run-all.ts --skip-enrich",
+    "etl:fingerprints": "tsx --env-file .env.local scripts/etl/run-all.ts --skip-all-ingest"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.112.4",
     "@neondatabase/serverless": "^1.1.0",
     "date-fns": "^4.4.0",
     "fast-xml-parser": "^5.10.1",

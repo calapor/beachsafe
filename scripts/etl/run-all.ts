@@ -13,17 +13,20 @@ function run(script: string) {
   });
 }
 
+const args = new Set(process.argv.slice(2));
+const skip = (flag: string) => args.has("--skip-" + flag) || args.has("--skip-all-ingest");
+
 async function main() {
   run("migrate.ts");
-  run("etl/ingest-weather.ts");
-  run("etl/ingest-waves.ts");
-  run("etl/ingest-tides.ts");
-  run("etl/ingest-rnli.ts");
+  if (!skip("weather")) run("etl/ingest-weather.ts");
+  if (!skip("waves"))   run("etl/ingest-waves.ts");
+  if (!skip("tides")) run("etl/ingest-tides.ts");
+  if (!skip("rnli"))  run("etl/ingest-rnli.ts");
   run("etl/compute-astro.ts");
   run("etl/seed-incidents.ts");
-  // Seed synthetic observations from approx_conditions as fallback when
-  // real weather/wave data is unavailable (e.g. restricted network).
   run("etl/seed-synthetic-obs.ts");
+  // Enrich incidents with Claude: time_of_day, activity, condition_related classification
+  if (!skip("enrich")) run("etl/enrich-incidents.ts");
   run("etl/build-fingerprints.ts");
   console.log("\n=== ETL complete ===");
 }
