@@ -23,6 +23,7 @@ export async function getIncidentsByBeach(beachId: number) {
     LEFT JOIN incident_fingerprints f ON f.incident_id = i.id
     WHERE i.beach_id = ${beachId}
       AND i.condition_related IS NOT FALSE
+      AND i.type != 'rnli_launch'
     ORDER BY i.date DESC
   `;
 }

@@ -8,10 +8,8 @@
     "description": "A swimmer got into difficulty in rough surf conditions. RNLI Crosshaven lifeboat launched and recovered casualty. Inquest returned a verdict of accidental drowning. Conditions: elevated swell from Storm Nadine remnants, onshore SW wind 18-22kts, spring tide.",
     "source_url": "https://www.irishtimes.com/news/ireland/irish-news/",
     "source_type": "news",
-    "approx_conditions": {
-      "mean_wind_knots": 20, "max_gust_knots": 30, "wind_dir_deg": 225,
-      "wave_height_m": 2.2, "rain_mm": 8, "mslp_hpa": 998, "tide_range_m": 3.8
-    }
+    "activity": "swimmer",
+    "condition_related": true
   },
   {
     "date": "2015-07-19",
@@ -22,10 +20,20 @@
     "description": "Two adults rescued after being caught in a rip current. Conditions: W wind 15kts, 1.5m swell, neap tide. Saved by RNLI Crosshaven ILB.",
     "source_url": "https://www.rnli.org/news-and-updates/",
     "source_type": "rnli",
-    "approx_conditions": {
-      "mean_wind_knots": 15, "max_gust_knots": 22, "wind_dir_deg": 270,
-      "wave_height_m": 1.5, "rain_mm": 2, "mslp_hpa": 1010, "tide_range_m": 2.0
-    }
+    "activity": "swimmer",
+    "condition_related": true
+  },
+  {
+    "date": "2016-08-07",
+    "type": "near_miss",
+    "severity": 3,
+    "casualties": 0,
+    "title": "Inflatable lilo blown offshore from Fountainstown",
+    "description": "RNLI Crosshaven launched at 14:52 after inflatables and lilos drifted from Fountainstown in a force 5–6 offshore wind. Crew recovered the inflatable at Ringabella beach; users had already made it ashore. Patsy Fegan (RNLI Ops Manager): 'with a force 5 wind they could have drifted well offshore.'",
+    "source_url": "https://rnli.org/news-and-media/2016/august/07/crosshaven-rnli-launch-to-dinghy-blown-out-to-sea",
+    "source_type": "rnli",
+    "activity": "watercraft",
+    "condition_related": true
   },
   {
     "date": "2018-06-24",
@@ -36,21 +44,19 @@
     "description": "Kayaker capsized in unexpectedly strong tidal flow near headland. Rescued by passing boat. SSW wind 12kts, low swell.",
     "source_url": "https://www.echolive.ie/",
     "source_type": "news",
-    "approx_conditions": {
-      "mean_wind_knots": 12, "max_gust_knots": 18, "wind_dir_deg": 202,
-      "wave_height_m": 0.8, "rain_mm": 1, "mslp_hpa": 1015, "tide_range_m": 3.5
-    }
+    "activity": "watercraft",
+    "condition_related": true
   },
   {
-    "date": "2023-09-05",
-    "type": "drowning",
-    "severity": 5,
-    "casualties": 1,
-    "title": "Child fatally swept into sea at Fountainstown",
-    "description": "A 7-year-old girl was swept into the sea by a large wave at approximately 4:40pm. Sea conditions were choppy. An extensive search involving RNLI Crosshaven, Shannon Coast Guard helicopter, Gardaí and fire services recovered her body near the shore at approximately 7:45pm. Inquest verdict: accidental drowning.",
-    "source_url": "https://www.irishtimes.com/ireland/2023/09/06/girl-7-who-drowned-while-swimming-at-fountainstown-beach-in-co-cork-named/",
+    "date": "2020-08-28",
+    "type": "rescue",
+    "severity": 4,
+    "casualties": 0,
+    "title": "Father and son swept out at Fountainstown",
+    "description": "A nine-year-old boy on an inflatable was swept out in a strong current at Fountainstown at approximately 19:30. His father swam out to help; the boy made it back with a kayaker's help but the father was left clinging to a marker buoy. Five teenagers in a RIB reached him before the lifeboat and brought him safely to shore. Coast Guard and RNLI Crosshaven also responded.",
+    "source_url": "https://www.irishexaminer.com/news/munster/arid-40036697.html",
     "source_type": "news",
-    "time_of_day": "16:40",
+    "time_of_day": "19:30",
     "time_source": "reported",
     "activity": "swimmer",
     "condition_related": true
@@ -64,9 +70,21 @@
     "description": "Child swept from rocks by unexpected wave surge. Recovered safely. High spring tide, swell 1.8m, calm wind — deceptive calm with ocean swell.",
     "source_url": "https://www.corkbeo.ie/",
     "source_type": "news",
-    "approx_conditions": {
-      "mean_wind_knots": 5, "max_gust_knots": 10, "wind_dir_deg": 180,
-      "wave_height_m": 1.8, "rain_mm": 0, "mslp_hpa": 1020, "tide_range_m": 3.9
-    }
+    "activity": "shore",
+    "condition_related": true
+  },
+  {
+    "date": "2023-09-05",
+    "type": "drowning",
+    "severity": 5,
+    "casualties": 1,
+    "title": "Child fatally swept into sea at Fountainstown",
+    "description": "A 7-year-old girl was swept into the sea by a large wave at approximately 16:40. Sea conditions were choppy. An extensive search involving RNLI Crosshaven, Shannon Coast Guard helicopter, Gardaí and fire services recovered her body near the shore at approximately 19:45. Inquest verdict: accidental drowning.",
+    "source_url": "https://www.irishtimes.com/ireland/2023/09/06/girl-7-who-drowned-while-swimming-at-fountainstown-beach-in-co-cork-named/",
+    "source_type": "news",
+    "time_of_day": "16:40",
+    "time_source": "reported",
+    "activity": "swimmer",
+    "condition_related": true
   }
 ]
