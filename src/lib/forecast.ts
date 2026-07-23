@@ -6,7 +6,7 @@ import {
   alertLevel,
   explain,
   baselineContrast,
-  normalizeFeatures,
+  computeBaseline,
   type ObsRow,
   type ScoredMatch,
   type FeatureVector,
@@ -179,8 +179,9 @@ function moonDataForDay(date: Date): { illum: number; phase: number } {
 
 function tideRangeForSlug(slug: string, phase: number): number {
   const ranges = BASE_TIDE_RANGE[slug] ?? { spring: 3.5, neap: 2.0 };
-  const dist = Math.min(phase, 1 - phase);
-  return dist < 0.12 ? ranges.spring : ranges.neap;
+  const distFromNew  = Math.min(phase, 1 - phase);
+  const distFromFull = Math.abs(phase - 0.5);
+  return Math.min(distFromNew, distFromFull) < 0.12 ? ranges.spring : ranges.neap;
 }
 
 function toHHMM(date: Date): string {
@@ -189,17 +190,6 @@ function toHHMM(date: Date): string {
   return `${h}:${m}`;
 }
 
-// Compute beach-typical feature vector as median across all historical fingerprints.
-function computeBaseline(fps: Array<{ features: FeatureVector }>): FeatureVector {
-  if (!fps.length) return normalizeFeatures({});
-  const keys = Object.keys(normalizeFeatures({})) as Array<keyof FeatureVector>;
-  const result = {} as Record<keyof FeatureVector, number>;
-  for (const k of keys) {
-    const vals = fps.map((fp) => fp.features[k] ?? 0).sort((a, b) => a - b);
-    result[k] = vals[Math.floor(vals.length / 2)] ?? 0;
-  }
-  return normalizeFeatures(result);
-}
 
 export async function getForecastDays(
   beach: { slug: string; lat: number; lon: number },

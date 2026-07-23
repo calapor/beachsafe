@@ -55,7 +55,9 @@ async function seedForBeach(beachId: number, slug: string) {
       const isoDate = d.toISOString().split("T")[0];
 
       const moon = getMoonIllumination(d);
-      const tideRange = Math.min(moon.phase, 1 - moon.phase) < 0.12
+      const distFromNew  = Math.min(moon.phase, 1 - moon.phase);
+      const distFromFull = Math.abs(moon.phase - 0.5);
+      const tideRange = Math.min(distFromNew, distFromFull) < 0.12
         ? ranges.spring : ranges.neap;
 
       // Prior days have milder conditions; incident day has full values

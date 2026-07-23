@@ -244,7 +244,10 @@ export function fingerprint(window: ObsRow[], beachBearingDeg: number, opts?: Fi
   const pressureDrop =
     pressures.length >= 2 ? pressures[0] - pressures[pressures.length - 1] : 0;
 
-  const moonIllum = dayOf.moon_illum ?? 0;
+  // Tidal force is maximum at both new moon (illum≈0) and full moon (illum≈1),
+  // minimum at quarter moons (illum≈0.5). Raw illumination only captures full moon.
+  const rawIllum = dayOf.moon_illum ?? 0;
+  const moonIllum = Math.abs(1 - 2 * rawIllum);
   const tideRange = dayOf.tide_range_m ?? 0;
 
   const windDir = dayOf.wind_dir_deg;
@@ -340,6 +343,107 @@ export function matchAll(
       };
     })
     .sort((a, b) => b.score - a.score);
+}
+
+// ─── Tide description & trajectory ───────────────────────────────────────────
+
+function minsToHHMM(m: number): string {
+  const normalised = ((Math.round(m) % 1440) + 1440) % 1440;
+  const h = Math.floor(normalised / 60);
+  const min = normalised % 60;
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
+export interface TideDescription {
+  direction: "flooding" | "ebbing" | "slack";
+  sincePrev: { label: string; mins: number };
+  toNext: { label: string; mins: number };
+  tideState: number;
+  hoursFromHigh: number;
+}
+
+export function describeTideAt(
+  timeOfDay: string,
+  highTimes: string | null,
+  lowTimes: string | null
+): TideDescription | null {
+  const pts = parseTidePoints(highTimes, lowTimes);
+  if (pts.length < 2) return null;
+  const tMins = timeToMins(timeOfDay);
+  if (isNaN(tMins)) return null;
+
+  let before = pts[0];
+  let after = pts[pts.length - 1];
+  let found = false;
+  for (let i = 0; i < pts.length - 1; i++) {
+    if (pts[i].t <= tMins && pts[i + 1].t > tMins) {
+      before = pts[i];
+      after = pts[i + 1];
+      found = true;
+      break;
+    }
+  }
+  if (!found) {
+    if (tMins < pts[0].t) { before = pts[pts.length - 1]; after = pts[0]; }
+    else { before = pts[pts.length - 2]; after = pts[pts.length - 1]; }
+  }
+
+  const sinceMins = tMins >= before.t ? tMins - before.t : tMins + 1440 - before.t;
+  const toMins = after.t >= tMins ? after.t - tMins : after.t + 1440 - tMins;
+
+  const direction: "flooding" | "ebbing" | "slack" =
+    !before.isHigh && after.isHigh ? "flooding" :
+    before.isHigh && !after.isHigh ? "ebbing" : "slack";
+
+  const { tideState, hoursFromHigh } = stateAtMins(tMins, pts);
+
+  return {
+    direction,
+    sincePrev: { label: `${minsToHHMM(before.t)} ${before.isHigh ? "HW" : "LW"}`, mins: sinceMins },
+    toNext: { label: `${minsToHHMM(after.t)} ${after.isHigh ? "HW" : "LW"}`, mins: toMins },
+    tideState,
+    hoursFromHigh,
+  };
+}
+
+export interface TideStep {
+  minsOffset: number;
+  tideState: number;
+  hoursFromHigh: number;
+}
+
+export function tideTrajectory(
+  timeOfDay: string,
+  highTimes: string | null,
+  lowTimes: string | null,
+  minutesBefore = 60,
+  steps = 4
+): TideStep[] {
+  const pts = parseTidePoints(highTimes, lowTimes);
+  if (pts.length < 2) return [];
+  const tMins = timeToMins(timeOfDay);
+  if (isNaN(tMins)) return [];
+
+  const result: TideStep[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const minsOffset = -minutesBefore + (minutesBefore * i) / steps;
+    const { tideState, hoursFromHigh } = stateAtMins(tMins + minsOffset, pts);
+    result.push({ minsOffset: Math.round(minsOffset), tideState, hoursFromHigh });
+  }
+  return result;
+}
+
+// ─── Baseline ─────────────────────────────────────────────────────────────────
+
+export function computeBaseline(fps: Array<{ features: FeatureVector }>): FeatureVector {
+  if (!fps.length) return normalizeFeatures({});
+  const keys = Object.keys(normalizeFeatures({})) as Array<keyof FeatureVector>;
+  const result = {} as Record<keyof FeatureVector, number>;
+  for (const k of keys) {
+    const vals = fps.map((fp) => fp.features[k] ?? 0).sort((a, b) => a - b);
+    result[k] = vals[Math.floor(vals.length / 2)] ?? 0;
+  }
+  return normalizeFeatures(result);
 }
 
 // ─── Explainability ───────────────────────────────────────────────────────────

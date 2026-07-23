@@ -16,8 +16,9 @@ function moonIllum(date: Date): number {
 
 // Spring/neap proxy: phase 0=new moon, 0.5=full moon → both produce spring tides
 function springNeapProxy(phase: number): "spring" | "neap" {
-  const dist = Math.min(phase, 1 - phase);
-  return dist < 0.12 ? "spring" : "neap";
+  const distFromNew  = Math.min(phase, 1 - phase);
+  const distFromFull = Math.abs(phase - 0.5);
+  return Math.min(distFromNew, distFromFull) < 0.12 ? "spring" : "neap";
 }
 
 const BASE_TIDE_RANGE: Record<string, { spring: number; neap: number }> = {

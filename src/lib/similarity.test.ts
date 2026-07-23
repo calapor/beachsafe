@@ -8,6 +8,9 @@ import {
   deriveTideState,
   explain,
   baselineContrast,
+  describeTideAt,
+  tideTrajectory,
+  computeBaseline,
   type ObsRow,
   type FeatureVector,
 } from "./similarity";
@@ -81,6 +84,15 @@ describe("fingerprint", () => {
   it("computes wavePeriod normalised to period/20", () => {
     const obs = [makeObs({ wave_period_s: 10 })];
     expect(fingerprint(obs, 200).wavePeriod).toBeCloseTo(10 / 20, 3);
+  });
+
+  it("moonIllum is tidal force: high at new AND full moon, zero at quarter", () => {
+    // Full moon (illum ≈ 1.0): tidal force = |1 - 2*1| = 1.0
+    expect(fingerprint([makeObs({ moon_illum: 1.0 })], 200).moonIllum).toBeCloseTo(1.0, 2);
+    // New moon (illum ≈ 0.0): tidal force = |1 - 2*0| = 1.0
+    expect(fingerprint([makeObs({ moon_illum: 0.0 })], 200).moonIllum).toBeCloseTo(1.0, 2);
+    // Quarter moon (illum ≈ 0.5): tidal force = |1 - 2*0.5| = 0.0
+    expect(fingerprint([makeObs({ moon_illum: 0.5 })], 200).moonIllum).toBeCloseTo(0.0, 2);
   });
 
   it("is backward-compatible without opts (tideConfidence=0)", () => {
@@ -284,5 +296,119 @@ describe("baselineContrast", () => {
     for (let i = 0; i < devs.length - 1; i++) {
       expect(devs[i].deviation).toBeGreaterThanOrEqual(devs[i + 1].deviation);
     }
+  });
+});
+
+describe("describeTideAt", () => {
+  const HIGH = "06:00,18:20";
+  const LOW  = "00:10,12:10";
+
+  it("flooding: LW before, HW after", () => {
+    // 03:00 is between LW(00:10) and HW(06:00)
+    const r = describeTideAt("03:00", HIGH, LOW);
+    expect(r).not.toBeNull();
+    expect(r!.direction).toBe("flooding");
+  });
+
+  it("ebbing: HW before, LW after", () => {
+    // 09:00 is between HW(06:00) and LW(12:10)
+    const r = describeTideAt("09:00", HIGH, LOW);
+    expect(r).not.toBeNull();
+    expect(r!.direction).toBe("ebbing");
+  });
+
+  it("sincePrev label contains the previous tide event", () => {
+    // 09:00 → previous event is HW at 06:00, so since ≈ 180 mins
+    const r = describeTideAt("09:00", HIGH, LOW);
+    expect(r).not.toBeNull();
+    expect(r!.sincePrev.label).toContain("06:00");
+    expect(r!.sincePrev.label).toContain("HW");
+    expect(r!.sincePrev.mins).toBeCloseTo(180, -1);
+  });
+
+  it("toNext label contains the next tide event", () => {
+    // 09:00 → next event is LW at 12:10, so to ≈ 190 mins
+    const r = describeTideAt("09:00", HIGH, LOW);
+    expect(r).not.toBeNull();
+    expect(r!.toNext.label).toContain("12:10");
+    expect(r!.toNext.label).toContain("LW");
+    expect(r!.toNext.mins).toBeCloseTo(190, -1);
+  });
+
+  it("returns null for missing tide times", () => {
+    expect(describeTideAt("09:00", null, null)).toBeNull();
+  });
+
+  it("tideState and hoursFromHigh are populated", () => {
+    const r = describeTideAt("09:00", HIGH, LOW);
+    expect(r).not.toBeNull();
+    expect(r!.tideState).toBeLessThan(0); // ebbing
+    expect(r!.hoursFromHigh).toBeGreaterThan(0);
+  });
+});
+
+describe("tideTrajectory", () => {
+  const HIGH = "06:00,18:20";
+  const LOW  = "12:10";
+
+  it("returns steps+1 elements", () => {
+    const r = tideTrajectory("09:00", HIGH, LOW, 60, 4);
+    expect(r).toHaveLength(5);
+  });
+
+  it("first element minsOffset is -minutesBefore", () => {
+    const r = tideTrajectory("09:00", HIGH, LOW, 60, 4);
+    expect(r[0].minsOffset).toBe(-60);
+  });
+
+  it("last element minsOffset is 0", () => {
+    const r = tideTrajectory("09:00", HIGH, LOW, 60, 4);
+    expect(r[r.length - 1].minsOffset).toBe(0);
+  });
+
+  it("returns empty array for missing tide times", () => {
+    expect(tideTrajectory("09:00", null, null)).toEqual([]);
+  });
+
+  it("tideState values are in [-1, 1]", () => {
+    const r = tideTrajectory("09:00", HIGH, LOW, 60, 4);
+    for (const step of r) {
+      expect(step.tideState).toBeGreaterThanOrEqual(-1);
+      expect(step.tideState).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
+describe("computeBaseline", () => {
+  it("returns zeros for empty input", () => {
+    const b = computeBaseline([]);
+    expect(b.maxWave).toBe(0);
+    expect(b.meanWind).toBe(0);
+  });
+
+  it("returns the median value for each key", () => {
+    const fps = [
+      { features: normalizeFeatures({ maxWave: 0.2 }) },
+      { features: normalizeFeatures({ maxWave: 0.5 }) },
+      { features: normalizeFeatures({ maxWave: 0.8 }) },
+    ];
+    const b = computeBaseline(fps);
+    expect(b.maxWave).toBeCloseTo(0.5, 3);
+  });
+
+  it("with even count picks lower median", () => {
+    const fps = [
+      { features: normalizeFeatures({ maxWave: 0.2 }) },
+      { features: normalizeFeatures({ maxWave: 0.6 }) },
+    ];
+    const b = computeBaseline(fps);
+    // Math.floor(2/2) = 1 → sorted [0.2, 0.6] → vals[1] = 0.6
+    expect(b.maxWave).toBeCloseTo(0.6, 3);
+  });
+
+  it("single entry returns that entry's values", () => {
+    const fps = [{ features: normalizeFeatures({ moonIllum: 0.75 }) }];
+    const b = computeBaseline(fps);
+    expect(b.moonIllum).toBeCloseTo(0.75, 3);
   });
 });
