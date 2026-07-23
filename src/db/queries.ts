@@ -71,6 +71,17 @@ export async function getAllFingerprints(beachId: number) {
   `;
 }
 
+export async function getAnnualObservations(beachId: number) {
+  const sql = db();
+  return sql`
+    SELECT date, wave_height_m, moon_illum, tide_range_m, max_gust_knots, mean_wind_knots
+    FROM observations
+    WHERE beach_id = ${beachId}
+      AND date >= CURRENT_DATE - INTERVAL '1 year'
+    ORDER BY date ASC
+  `;
+}
+
 export async function upsertObservation(beachId: number, date: string, data: Record<string, unknown>) {
   const sql = db();
   const keys = Object.keys(data).filter((k) => data[k] !== undefined);

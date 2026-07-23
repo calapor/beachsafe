@@ -1,10 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getIncidentById, getObservationWindow, getAllFingerprints, getBeachBySlug } from "@/db/queries";
-import { AlertBadge } from "@/components/alert-badge";
+import { getIncidentById, getObservationWindow, getAllFingerprints, getAnnualObservations } from "@/db/queries";
 import { MoonGlyph } from "@/components/moon-glyph";
 import { ConditionsChart } from "@/components/conditions-chart";
-import { fingerprint, matchAll, alertLevel } from "@/lib/similarity";
+import { IncidentVerdict } from "@/components/incident-verdict";
+import { ConditionsAtTime } from "@/components/conditions-at-time";
+import {
+  fingerprint,
+  matchAll,
+  baselineContrast,
+  computeBaseline,
+  describeTideAt,
+  tideTrajectory,
+  type FeatureVector,
+} from "@/lib/similarity";
+import { fetchHourlyConditions, pickAtAndBefore } from "@/lib/incident-conditions";
+import { FEATURE_LABELS } from "@/lib/feature-labels";
 
 export const revalidate = 86400;
 
@@ -14,11 +25,12 @@ const BEACH_BEARING: Record<string, number> = {
   skerries:      90,
 };
 
-function windDirLabel(deg: number | null): string {
-  if (deg == null) return "—";
-  const dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
-  return dirs[Math.round(deg / 22.5) % 16];
-}
+const TYPE_COLOR: Record<string, string> = {
+  rnli_launch: "bg-blue-100 text-blue-800",
+  drowning:    "bg-red-100 text-red-800",
+  rescue:      "bg-orange-100 text-orange-800",
+  near_miss:   "bg-yellow-100 text-yellow-800",
+};
 
 function ConditionRow({ label, value, unit }: { label: string; value: string | number | null; unit?: string }) {
   return (
@@ -49,23 +61,45 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
     ? incident.date.toISOString().slice(0, 10)
     : String(incident.date).slice(0, 10);
   const bearing = BEACH_BEARING[incident.beach_slug] ?? 270;
+  const timeLabel = incident.time_of_day ? String(incident.time_of_day).slice(0, 5) : null;
 
-  const [window7, allFps] = await Promise.all([
+  const [window7, allFps, annualObsRaw] = await Promise.all([
     getObservationWindow(incident.beach_id, isoDate, 8),
     getAllFingerprints(incident.beach_id),
+    getAnnualObservations(incident.beach_id),
   ]);
+
+  const annualObs = (annualObsRaw as Array<{
+    date: string;
+    wave_height_m?: number | null;
+    moon_illum?: number | null;
+    tide_range_m?: number | null;
+    max_gust_knots?: number | null;
+  }>);
 
   const obs7 = window7 as Array<{
     date: string; mean_wind_knots?: number | null; max_gust_knots?: number | null;
     wave_height_m?: number | null; wave_period_s?: number | null; rain_mm?: number | null;
     mslp_hpa?: number | null; moon_illum?: number | null; tide_range_m?: number | null;
     wind_dir_deg?: number | null; sea_temp_c?: number | null;
+    high_tide_times?: string | null; low_tide_times?: string | null;
   }>;
 
   const dayOf = obs7.find((r) => (r.date instanceof Date ? r.date.toISOString() : String(r.date)).slice(0, 10) === isoDate) ?? obs7[obs7.length - 1];
 
-  // Feature vector for this incident
-  const fv = fingerprint(obs7 as never, bearing);
+  // Use stored fingerprint if available; recompute with time opts if not.
+  const storedFeatures = incident.features as FeatureVector | null;
+  const fv: FeatureVector = storedFeatures ?? fingerprint(obs7 as never, bearing, {
+    timeOfDay: incident.time_of_day ?? null,
+    highTideTimes: dayOf?.high_tide_times ?? null,
+    lowTideTimes: dayOf?.low_tide_times ?? null,
+  });
+
+  // Baseline from all beach fingerprints
+  const allFpsMapped = (allFps as Array<{ incident_id: number; date: string; title: string; type: string; severity: number; features: unknown }>)
+    .map((fp) => ({ features: fp.features as FeatureVector }));
+  const baseline = computeBaseline(allFpsMapped);
+  const contrast = baselineContrast(fv, baseline);
 
   // Similar incidents
   const fps = (allFps as Array<{ incident_id: number; date: string; title: string; type: string; severity: number; features: unknown }>)
@@ -76,9 +110,8 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
       title: fp.title,
       type: fp.type,
       severity: fp.severity,
-      features: fp.features as ReturnType<typeof import("@/lib/similarity").normalizeFeatures>,
+      features: fp.features as FeatureVector,
     }));
-
   const similar = matchAll(fv, fps).slice(0, 5);
 
   const chartData = obs7.map((r) => ({
@@ -88,12 +121,20 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
     rain: r.rain_mm ?? null,
   }));
 
-  const TYPE_COLOR: Record<string, string> = {
-    rnli_launch: "bg-blue-100 text-blue-800",
-    drowning:    "bg-red-100 text-red-800",
-    rescue:      "bg-orange-100 text-orange-800",
-    near_miss:   "bg-yellow-100 text-yellow-800",
-  };
+  // Hourly at-time data (only if time_of_day is known)
+  const hourly = timeLabel
+    ? await fetchHourlyConditions(incident.lat, incident.lon, isoDate)
+    : null;
+  const atTimePicked = hourly && timeLabel ? pickAtAndBefore(hourly, timeLabel) : null;
+  const tideDesc = timeLabel && dayOf
+    ? describeTideAt(timeLabel, dayOf.high_tide_times ?? null, dayOf.low_tide_times ?? null)
+    : null;
+  const tideWindow = timeLabel && dayOf
+    ? tideTrajectory(timeLabel, dayOf.high_tide_times ?? null, dayOf.low_tide_times ?? null)
+    : [];
+
+  // Contrast map for the day-vs-normal table
+  const contrastMap = Object.fromEntries(contrast.map((d) => [d.key, d]));
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -115,9 +156,9 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
           <h1 className="text-2xl font-bold mt-2">{incident.title}</h1>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <p className="text-blue-300 text-sm">{isoDate}</p>
-            {incident.time_of_day && (
+            {timeLabel && (
               <span className="text-xs bg-blue-700 text-blue-100 px-2 py-0.5 rounded-full">
-                {String(incident.time_of_day).slice(0, 5)}
+                {timeLabel}
                 {incident.time_source && incident.time_source !== "unknown" && (
                   <span className="opacity-70 ml-1">({incident.time_source})</span>
                 )}
@@ -133,6 +174,15 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
       </header>
 
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8 space-y-8">
+
+        {/* Verdict */}
+        <IncidentVerdict
+          contrast={contrast}
+          activity={incident.activity}
+          conditionRelated={incident.condition_related}
+          annualObs={annualObs}
+        />
+
         {/* Description */}
         {incident.description && (
           <section className="bg-white rounded-2xl border border-gray-200 p-6">
@@ -148,32 +198,66 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
           </section>
         )}
 
-        {/* Conditions on the day */}
+        {/* Conditions at time (only when time_of_day is known and hourly data available) */}
+        {timeLabel && atTimePicked && (
+          <ConditionsAtTime
+            timeLabel={timeLabel}
+            atTime={atTimePicked.atTime}
+            window={atTimePicked.window}
+            tideDesc={tideDesc}
+            tideWindow={tideWindow}
+          />
+        )}
+
+        {/* Conditions on the day — reconciled: drop wind/wave when hourly is available */}
         <section className="bg-white rounded-2xl border border-gray-200 p-6">
           <h2 className="font-semibold text-gray-900 mb-4">Conditions on {isoDate}</h2>
           {dayOf ? (
             <div className="grid grid-cols-2 gap-x-8">
-              <div>
-                <ConditionRow label="Mean wind" value={dayOf.mean_wind_knots?.toFixed(1) ?? null} unit="kts" />
-                <ConditionRow label="Max gust" value={dayOf.max_gust_knots?.toFixed(1) ?? null} unit="kts" />
-                <ConditionRow label="Wind direction" value={windDirLabel(dayOf.wind_dir_deg ?? null)} />
-                <ConditionRow label="Wave height (sig.)" value={dayOf.wave_height_m?.toFixed(2) ?? null} unit="m" />
-                <ConditionRow label="Wave period" value={dayOf.wave_period_s?.toFixed(1) ?? null} unit="s" />
-              </div>
-              <div>
-                <ConditionRow label="Rainfall" value={dayOf.rain_mm?.toFixed(1) ?? null} unit="mm" />
-                <ConditionRow label="Pressure" value={dayOf.mslp_hpa?.toFixed(1) ?? null} unit="hPa" />
-                <ConditionRow label="Sea temp" value={dayOf.sea_temp_c?.toFixed(1) ?? null} unit="°C" />
-                {dayOf.moon_illum != null && (
-                  <div className="flex justify-between py-2 border-b border-gray-100">
-                    <span className="text-sm text-gray-500">Moon</span>
-                    <span className="text-sm font-medium text-gray-900">
-                      <MoonGlyph phase={0} illum={dayOf.moon_illum} />
-                    </span>
+              {atTimePicked ? (
+                // Hourly available → show only source-neutral fields
+                <>
+                  <div>
+                    <ConditionRow label="Rainfall" value={dayOf.rain_mm?.toFixed(1) ?? null} unit="mm" />
+                    <ConditionRow label="Tide range (est.)" value={dayOf.tide_range_m?.toFixed(1) ?? null} unit="m" />
                   </div>
-                )}
-                <ConditionRow label="Tide range (est.)" value={dayOf.tide_range_m?.toFixed(1) ?? null} unit="m" />
-              </div>
+                  <div>
+                    <ConditionRow label="Sea temp" value={dayOf.sea_temp_c?.toFixed(1) ?? null} unit="°C" />
+                    {dayOf.moon_illum != null && (
+                      <div className="flex justify-between py-2 border-b border-gray-100">
+                        <span className="text-sm text-gray-500">Moon</span>
+                        <span className="text-sm font-medium text-gray-900">
+                          <MoonGlyph phase={0} illum={dayOf.moon_illum} />
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                // No hourly → full daily grid fallback
+                <>
+                  <div>
+                    <ConditionRow label="Mean wind" value={dayOf.mean_wind_knots?.toFixed(1) ?? null} unit="kts" />
+                    <ConditionRow label="Max gust" value={dayOf.max_gust_knots?.toFixed(1) ?? null} unit="kts" />
+                    <ConditionRow label="Wave height (sig.)" value={dayOf.wave_height_m?.toFixed(2) ?? null} unit="m" />
+                    <ConditionRow label="Wave period" value={dayOf.wave_period_s?.toFixed(1) ?? null} unit="s" />
+                    <ConditionRow label="Rainfall" value={dayOf.rain_mm?.toFixed(1) ?? null} unit="mm" />
+                  </div>
+                  <div>
+                    <ConditionRow label="Pressure" value={dayOf.mslp_hpa?.toFixed(1) ?? null} unit="hPa" />
+                    <ConditionRow label="Sea temp" value={dayOf.sea_temp_c?.toFixed(1) ?? null} unit="°C" />
+                    {dayOf.moon_illum != null && (
+                      <div className="flex justify-between py-2 border-b border-gray-100">
+                        <span className="text-sm text-gray-500">Moon</span>
+                        <span className="text-sm font-medium text-gray-900">
+                          <MoonGlyph phase={0} illum={dayOf.moon_illum} />
+                        </span>
+                      </div>
+                    )}
+                    <ConditionRow label="Tide range (est.)" value={dayOf.tide_range_m?.toFixed(1) ?? null} unit="m" />
+                  </div>
+                </>
+              )}
             </div>
           ) : (
             <p className="text-sm text-gray-400">No observation data available for this date.</p>
@@ -191,27 +275,73 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
           </section>
         )}
 
-        {/* Feature fingerprint */}
-        <section className="bg-slate-50 rounded-2xl border border-gray-200 p-6">
-          <h2 className="font-semibold text-gray-900 mb-3">Incident fingerprint</h2>
-          <p className="text-xs text-gray-500 mb-3">Normalised feature vector used for similarity matching (0–1 scale).</p>
-          <div className="grid grid-cols-4 gap-3">
-            {Object.entries(fv).map(([k, v]) => (
-              <div key={k} className="bg-white rounded-lg p-3 border border-gray-100">
-                <p className="text-xs text-gray-400 mb-1">{k}</p>
-                <div className="w-full bg-gray-100 rounded-full h-1.5 mb-1">
-                  <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${Math.min(v * 100, 100)}%` }} />
-                </div>
-                <p className="text-xs font-mono font-medium">{v.toFixed(3)}</p>
-              </div>
-            ))}
+        {/* How this day compared to normal */}
+        <section className="bg-white rounded-2xl border border-gray-200 p-6">
+          <h2 className="font-semibold text-gray-900 mb-1">How this day compared to normal at {incident.beach_name}</h2>
+          <p className="text-xs text-gray-500 mb-4">
+            Each factor shows this day&apos;s value vs the beach&apos;s historical median, sorted by how much it deviated.
+          </p>
+          <div className="grid grid-cols-[1fr_auto_auto_60px] gap-x-4 mb-2 px-1">
+            <p className="text-[10px] text-gray-400 uppercase tracking-wide">Factor</p>
+            <p className="text-[10px] text-gray-400 uppercase tracking-wide text-right">This day</p>
+            <p className="text-[10px] text-gray-400 uppercase tracking-wide text-right">Typical</p>
+            <p className="text-[10px] text-gray-400 uppercase tracking-wide text-right">Verdict</p>
           </div>
+          <div className="space-y-2">
+            {contrast.map((d) => {
+              const meta = FEATURE_LABELS[d.key];
+              if (!meta) return null;
+              const thisVal = meta.format(d.candidateVal);
+              const typicalVal = meta.format(d.baselineVal);
+              const unusual = d.deviation > 0.2;
+              return (
+                <div key={d.key} className="grid grid-cols-[1fr_auto_auto_60px] gap-x-4 items-center py-1.5 border-b border-gray-50 last:border-0">
+                  <span className="text-sm text-gray-700">{meta.label}</span>
+                  <span className={`text-sm tabular-nums text-right ${unusual ? "font-semibold text-gray-900" : "text-gray-600"}`}>
+                    {thisVal}
+                  </span>
+                  <span className="text-sm tabular-nums text-right text-gray-400">{typicalVal}</span>
+                  <div className="text-right">
+                    {unusual ? (
+                      <span className="inline-block text-[10px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5">
+                        unusual
+                      </span>
+                    ) : (
+                      <span className="inline-block text-[10px] text-gray-400 bg-gray-50 rounded px-1.5 py-0.5">
+                        typical
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <details className="mt-4">
+            <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600">
+              Raw normalised feature vector (0–1 scale)
+            </summary>
+            <div className="grid grid-cols-4 gap-2 mt-3">
+              {Object.entries(fv).map(([k, v]) => (
+                <div key={k} className="bg-gray-50 rounded-lg p-2 border border-gray-100">
+                  <p className="text-[10px] text-gray-400 mb-0.5">{k}</p>
+                  <div className="w-full bg-gray-100 rounded-full h-1 mb-0.5">
+                    <div className="bg-blue-400 h-1 rounded-full" style={{ width: `${Math.min(Math.abs(v) * 100, 100)}%` }} />
+                  </div>
+                  <p className="text-[10px] font-mono text-gray-600">{v.toFixed(3)}</p>
+                </div>
+              ))}
+            </div>
+          </details>
         </section>
 
-        {/* Similar past incidents */}
+        {/* Similar past incidents — reframed as conditions-similarity list */}
         {similar.length > 0 && (
           <section>
-            <h2 className="font-semibold text-gray-900 mb-4">Days with most similar conditions</h2>
+            <h2 className="font-semibold text-gray-900 mb-1">Days with most similar sea/weather conditions</h2>
+            <p className="text-xs text-gray-500 mb-3">
+              % reflects similarity of observed conditions only — not severity or outcome.
+            </p>
             <div className="space-y-3">
               {similar.map((m) => (
                 <Link
@@ -223,8 +353,9 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
                     <p className="text-sm font-medium text-gray-900">{m.title}</p>
                     <p className="text-xs text-gray-400">{m.date}</p>
                   </div>
-                  <AlertBadge level={m.alertLevel} size="sm" />
-                  <span className="text-xs text-gray-500 font-mono">{(m.score * 100).toFixed(0)}%</span>
+                  <span className="text-sm font-semibold text-gray-700 font-mono">
+                    {(m.score * 100).toFixed(0)}%
+                  </span>
                 </Link>
               ))}
             </div>

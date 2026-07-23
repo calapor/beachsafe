@@ -63,9 +63,9 @@ export const FEATURE_LABELS: Record<string, FeatureLabel> = {
     format: (v) => v > 0.5 ? "Cold" : v > 0.2 ? "Cool" : "Mild",
   },
   moonIllum: {
-    label: "Moon illumination",
-    unit: "%",
-    format: (v) => `${(v * 100).toFixed(0)}%`,
+    label: "Lunar tidal force",
+    unit: "",
+    format: (v) => v > 0.7 ? "Spring (full/new moon)" : v > 0.3 ? "Intermediate" : "Neap (quarter moon)",
   },
   warmCalm: {
     label: "Warm & calm",
