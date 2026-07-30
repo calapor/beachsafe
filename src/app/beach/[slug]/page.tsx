@@ -5,7 +5,7 @@ import { AlertBadge } from "@/components/alert-badge";
 import { ConditionsChart } from "@/components/conditions-chart";
 import { RiskEvidencePanel } from "@/components/risk-evidence-panel";
 import { getForecastDays } from "@/lib/forecast";
-import type { ForecastDay } from "@/lib/forecast";
+import type { ForecastDay, TideEvent, EbbWindow } from "@/lib/forecast";
 
 export const dynamic = "force-dynamic";
 
@@ -23,27 +23,83 @@ const TYPE_COLOR: Record<string, string> = {
   near_miss:   "bg-yellow-100 text-yellow-800",
 };
 
+function TidePill({ event }: { event: TideEvent }) {
+  return (
+    <span className={`flex items-center gap-0.5 text-[10px] font-mono ${event.category === "HIGH" ? "text-blue-700" : "text-slate-500"}`}>
+      {event.category === "HIGH" ? "↑" : "↓"}{event.timeLocal}
+    </span>
+  );
+}
+
 function ForecastStrip({ days }: { days: ForecastDay[] }) {
   return (
     <div className="grid grid-cols-5 gap-2">
-      {days.map((d) => (
-        <div key={d.date} className="bg-white border border-gray-200 rounded-xl p-3 flex flex-col gap-2 items-center text-center">
-          <p className="text-xs font-semibold text-gray-500">{d.date.slice(5)}</p>
-          <AlertBadge level={d.tier === "unknown" ? "unknown" : d.alertLevel} size="sm" />
-          {d.wind_knots != null && (
-            <p className="text-xs text-gray-600">{d.wind_knots.toFixed(0)} kts</p>
-          )}
-          {d.wave_height_m != null && (
-            <p className="text-xs text-gray-500">{d.wave_height_m.toFixed(1)} m</p>
-          )}
-          {d.tier === "unknown" && (
-            <p className="text-[10px] text-gray-400">No forecast data</p>
-          )}
-          {d.hazardDriver && d.tier !== "unknown" && d.tier !== "low" && (
-            <p className="text-[10px] text-gray-500 truncate w-full">{d.hazardDriver.key}</p>
-          )}
-        </div>
-      ))}
+      {days.map((d) => {
+        const daylightEvents = d.tideEvents.filter((e) => {
+          if (!d.daylightLocal) return true;
+          return e.timeLocal >= d.daylightLocal.sunrise && e.timeLocal <= d.daylightLocal.sunset;
+        });
+        const hasEbb = d.ebbWindows.some((w) => w.duringDaylight);
+        return (
+          <div key={d.date} className="bg-white border border-gray-200 rounded-xl p-3 flex flex-col gap-1.5 items-center text-center">
+            <p className="text-xs font-semibold text-gray-500">{d.date.slice(5)}</p>
+            <AlertBadge level={d.tier === "unknown" ? "unknown" : d.alertLevel} size="sm" />
+            {d.wind_knots != null && (
+              <p className="text-xs text-gray-600">{d.wind_knots.toFixed(0)} kts</p>
+            )}
+            {d.wave_height_m != null && (
+              <p className="text-xs text-gray-500">{d.wave_height_m.toFixed(1)} m</p>
+            )}
+            {daylightEvents.length > 0 && (
+              <div className="flex flex-col items-center gap-0.5 w-full border-t border-gray-100 pt-1 mt-0.5">
+                {daylightEvents.map((e) => <TidePill key={e.isoUtc} event={e} />)}
+              </div>
+            )}
+            {hasEbb && (
+              <p className="text-[10px] text-amber-600 font-medium">⚠ ebb risk</p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function TideTimeline({ tideEvents, ebbWindows, daylightLocal }: {
+  tideEvents: TideEvent[];
+  ebbWindows: EbbWindow[];
+  daylightLocal: { sunrise: string; sunset: string } | null;
+}) {
+  if (tideEvents.length === 0) return null;
+  return (
+    <div className="space-y-2">
+      {daylightLocal && (
+        <p className="text-xs text-gray-400">
+          Daylight {daylightLocal.sunrise}–{daylightLocal.sunset} IST
+        </p>
+      )}
+      <div className="space-y-1">
+        {tideEvents.map((e) => {
+          const ebb = ebbWindows.find((w) => w.lowTime === e.timeLocal);
+          const isDaylight = !daylightLocal ||
+            (e.timeLocal >= daylightLocal.sunrise && e.timeLocal <= daylightLocal.sunset);
+          return (
+            <div key={e.isoUtc} className={`flex items-start gap-3 text-sm ${isDaylight ? "" : "opacity-40"}`}>
+              <span className={`font-mono font-semibold w-12 flex-shrink-0 ${e.category === "HIGH" ? "text-blue-700" : "text-slate-600"}`}>
+                {e.category === "HIGH" ? "↑ HW" : "↓ LW"}
+              </span>
+              <span className="font-mono text-gray-700 w-12 flex-shrink-0">{e.timeLocal}</span>
+              <span className="text-gray-400 text-xs w-14 flex-shrink-0">{e.level.toFixed(2)}m</span>
+              {ebb && ebb.duringDaylight && (
+                <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+                  ⚠ peak ebb {ebb.from}–{ebb.to}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-gray-400">Times IST. ⚠ marks strongest ebb-current window (rip risk elevated).</p>
     </div>
   );
 }
@@ -101,16 +157,28 @@ export default async function BeachPage({ params }: { params: Promise<{ slug: st
 
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8 space-y-8">
         {/* Today's alert */}
-        <section className="bg-white rounded-2xl border border-gray-200 p-6 flex items-center gap-4">
-          <div className="flex-1">
-            <h2 className="font-semibold text-gray-900 mb-1">Today&apos;s alert level</h2>
-            <p className="text-sm text-gray-500">
-              {todayLevel === "unknown"
-                ? "Forecast data unavailable — cannot compute risk."
-                : "Calibrated against historical conditions for this beach and month."}
-            </p>
+        <section className="bg-white rounded-2xl border border-gray-200 p-6 space-y-4">
+          <div className="flex items-center gap-4">
+            <div className="flex-1">
+              <h2 className="font-semibold text-gray-900 mb-1">Today&apos;s alert level</h2>
+              <p className="text-sm text-gray-500">
+                {todayLevel === "unknown"
+                  ? "Forecast data unavailable — cannot compute risk."
+                  : "Calibrated against historical conditions for this beach and month."}
+              </p>
+            </div>
+            <AlertBadge level={todayLevel} size="lg" showFreq />
           </div>
-          <AlertBadge level={todayLevel} size="lg" showFreq />
+          {today && today.tideEvents.length > 0 && (
+            <div className="border-t border-gray-100 pt-4">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Tide times today</h3>
+              <TideTimeline
+                tideEvents={today.tideEvents}
+                ebbWindows={today.ebbWindows}
+                daylightLocal={today.daylightLocal}
+              />
+            </div>
+          )}
         </section>
 
         {/* Risk evidence panel */}
