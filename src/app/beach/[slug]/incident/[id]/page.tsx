@@ -16,6 +16,9 @@ import {
 } from "@/lib/similarity";
 import { fetchHourlyConditions, pickAtAndBefore } from "@/lib/incident-conditions";
 import { FEATURE_LABELS } from "@/lib/feature-labels";
+import { getHistoricalHazard, type HistoricalHazardResult } from "@/lib/historical-hazard";
+import { AlertBadge } from "@/components/alert-badge";
+import type { Level } from "@/components/alert-badge";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +34,45 @@ const TYPE_COLOR: Record<string, string> = {
   rescue:      "bg-orange-100 text-orange-800",
   near_miss:   "bg-yellow-100 text-yellow-800",
 };
+
+function RetroHazardCard({ result, beachName, date }: {
+  result: HistoricalHazardResult;
+  beachName: string;
+  date: string;
+}) {
+  const tierAsLevel = result.tier as Level;
+  const isScored = result.tier !== "unknown";
+
+  return (
+    <section className="bg-white rounded-2xl border border-gray-200 p-6">
+      <h2 className="font-semibold text-gray-900 mb-1">What would BeachSafe have predicted?</h2>
+      <p className="text-xs text-gray-500 mb-4">
+        Retrospective score using observed conditions for {beachName} on {date}, calibrated against historical norms.
+      </p>
+      {isScored ? (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-4">
+            <AlertBadge level={tierAsLevel} size="lg" showFreq />
+            {!result.waveDataAvailable && (
+              <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                Weather signals only — wave buoy data not available for this era
+              </span>
+            )}
+          </div>
+          {result.percentile != null && (
+            <p className="text-xs text-gray-400">
+              Hazard percentile: {(result.percentile * 100).toFixed(0)}th — worse than {(result.percentile * 100).toFixed(0)}% of days at this beach in this month.
+            </p>
+          )}
+        </div>
+      ) : (
+        <p className="text-sm text-gray-500 italic">
+          Insufficient data — BeachSafe could not have scored this day.
+        </p>
+      )}
+    </section>
+  );
+}
 
 function ConditionRow({ label, value, unit }: { label: string; value: string | number | null; unit?: string }) {
   return (
@@ -68,6 +110,14 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
     getAllFingerprints(incident.beach_id),
     getAnnualObservations(incident.beach_id),
   ]);
+
+  let retroHazard: HistoricalHazardResult | null = null;
+  try {
+    retroHazard = await getHistoricalHazard(
+      { id: incident.beach_id, slug: incident.beach_slug },
+      isoDate,
+    );
+  } catch (e) { console.error("[RetroHazard]", e); }
 
   const annualObs = (annualObsRaw as Array<{
     date: string;
@@ -174,6 +224,15 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
       </header>
 
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8 space-y-8">
+
+        {/* Retrospective prediction card */}
+        {retroHazard && (
+          <RetroHazardCard
+            result={retroHazard}
+            beachName={incident.beach_name}
+            date={isoDate}
+          />
+        )}
 
         {/* Verdict */}
         <IncidentVerdict

@@ -68,3 +68,23 @@ export function tierFromPercentile(p: number | null): Tier {
   if (p >= 0.75) return "watch";
   return "low";
 }
+
+export function buildClimMap(
+  rows: Array<{ metric: string; n: number; coverage_start: unknown; coverage_end: unknown; ladder: unknown }>,
+  month: number,
+): Record<string, PercentileTable> {
+  const result: Record<string, PercentileTable> = {};
+  for (const row of rows) {
+    const ladder = typeof row.ladder === "string" ? JSON.parse(row.ladder) : row.ladder;
+    if (!Array.isArray(ladder) || ladder.length !== 101) continue;
+    result[row.metric] = {
+      metric: row.metric,
+      month,
+      n: row.n,
+      coverageStart: String(row.coverage_start ?? ""),
+      coverageEnd:   String(row.coverage_end ?? ""),
+      ladder,
+    };
+  }
+  return result;
+}
