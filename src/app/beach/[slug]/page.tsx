@@ -10,7 +10,7 @@ import { FEATURE_LABELS } from "@/lib/feature-labels";
 import type { ForecastDay } from "@/lib/forecast";
 import type { FeatureVector } from "@/lib/similarity";
 
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 const TYPE_LABEL: Record<string, string> = {
   rnli_launch: "RNLI Launch",

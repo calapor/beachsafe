@@ -17,7 +17,7 @@ import {
 import { fetchHourlyConditions, pickAtAndBefore } from "@/lib/incident-conditions";
 import { FEATURE_LABELS } from "@/lib/feature-labels";
 
-export const revalidate = 86400;
+export const dynamic = "force-dynamic";
 
 const BEACH_BEARING: Record<string, number> = {
   fountainstown: 135,

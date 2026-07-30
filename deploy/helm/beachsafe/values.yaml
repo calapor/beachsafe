@@ -1,0 +1,17 @@
+image:
+  registry: 192.168.1.101:30500
+  repository: beachsafe
+  tag: latest
+
+replicaCount: 1
+
+appVersion: ""
+
+service:
+  type: NodePort
+  port: 3000
+  nodePort: 30880
+
+secrets:
+  databaseUrl: ""
+  anthropicApiKey: ""
