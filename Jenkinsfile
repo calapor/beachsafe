@@ -10,14 +10,6 @@ metadata:
     app: beachsafe-build
 spec:
   serviceAccountName: jenkins-deployer
-  affinity:
-    nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-        - matchExpressions:
-          - key: kubernetes.io/arch
-            operator: In
-            values: ["amd64"]
   containers:
   - name: node
     image: node:20-bookworm
