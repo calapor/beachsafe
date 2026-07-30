@@ -18,16 +18,16 @@ const skip = (flag: string) => args.has("--skip-" + flag) || args.has("--skip-al
 
 async function main() {
   run("migrate.ts");
-  if (!skip("weather")) run("etl/ingest-weather.ts");
-  if (!skip("waves"))   run("etl/ingest-waves.ts");
-  if (!skip("tides")) run("etl/ingest-tides.ts");
-  if (!skip("rnli"))  run("etl/ingest-rnli.ts");
+  if (!skip("weather"))      run("etl/ingest-weather.ts");
+  if (!skip("waves"))        run("etl/ingest-waves.ts");
+  if (!skip("tides"))        run("etl/ingest-tides.ts");
+  if (!skip("rnli"))         run("etl/ingest-rnli.ts");
   run("etl/compute-astro.ts");
   run("etl/seed-incidents.ts");
-  run("etl/seed-synthetic-obs.ts");
   // Enrich incidents with Claude: time_of_day, activity, condition_related classification
-  if (!skip("enrich")) run("etl/enrich-incidents.ts");
+  if (!skip("enrich"))       run("etl/enrich-incidents.ts");
   run("etl/build-fingerprints.ts");
+  if (!skip("climatology"))  run("etl/build-climatology.ts");
   console.log("\n=== ETL complete ===");
 }
 

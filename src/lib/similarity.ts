@@ -1,3 +1,11 @@
+// Seaward bearing from each beach (degrees true).
+// A wind FROM this direction is directly onshore.
+export const BEACH_BEARING: Record<string, number> = {
+  fountainstown: 135,
+  ballybunion:   270,
+  skerries:      90,
+};
+
 export interface FeatureVector {
   meanWind: number;
   maxGust: number;
@@ -210,12 +218,14 @@ export interface ObsRow {
   moon_illum?: number | null;
   tide_range_m?: number | null;
   wind_dir_deg?: number | null;
-  // Phase 1 additions
   sea_temp_c?: number | null;
   wave_period_s?: number | null;
   temp_max_c?: number | null;
   high_tide_times?: string | null;
   low_tide_times?: string | null;
+  swell_height_m?: number | null;
+  swell_period_s?: number | null;
+  wind_wave_height_m?: number | null;
 }
 
 export interface FingerprintOpts {

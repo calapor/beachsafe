@@ -102,9 +102,10 @@ async function upsertResults(results: EnrichResult[]) {
   const timeOfDays:       (string | null)[] = results.map((r) => r.time_of_day);
   const timeSources:      string[]          = results.map((r) => r.time_of_day ? "reported" : "unknown");
   const activities:       string[]          = results.map((r) => r.activity);
-  const activitySources:  string[]          = results.map((r) => "reported");
+  const activitySources:  string[]          = results.map(() => "reported");
   const conditionRelated: boolean[]         = results.map((r) => r.condition_related);
   const exclusionCauses:  (string | null)[] = results.map((r) => r.exclusion_cause);
+  const evidences:        (string | null)[] = results.map((r) => r.evidence ?? null);
 
   await sql`
     UPDATE incidents SET
@@ -113,7 +114,8 @@ async function upsertResults(results: EnrichResult[]) {
       activity          = ac,
       activity_source   = as_,
       condition_related = cr::boolean,
-      exclusion_cause   = ec
+      exclusion_cause   = ec,
+      activity_evidence = ev
     FROM unnest(
       ${ids}::integer[],
       ${timeOfDays}::text[],
@@ -121,8 +123,9 @@ async function upsertResults(results: EnrichResult[]) {
       ${activities}::text[],
       ${activitySources}::text[],
       ${conditionRelated}::boolean[],
-      ${exclusionCauses}::text[]
-    ) AS u(id, t, ts, ac, as_, cr, ec)
+      ${exclusionCauses}::text[],
+      ${evidences}::text[]
+    ) AS u(id, t, ts, ac, as_, cr, ec, ev)
     WHERE incidents.id = u.id
   `;
 }
