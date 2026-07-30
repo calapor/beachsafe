@@ -3,17 +3,16 @@
 [![CI](https://github.com/calapor/beachsafe/actions/workflows/ci.yml/badge.svg)](https://github.com/calapor/beachsafe/actions/workflows/ci.yml)
 [![Tests](https://img.shields.io/github/checks-status/calapor/beachsafe/main?check=Vitest&label=tests&logo=vitest)](https://github.com/calapor/beachsafe/actions/workflows/ci.yml)
 
-Coastal incident condition-matching & alerting for three Irish beaches —
-**Fountainstown** (Cork), **Ballybunion** (Kerry), and **Skerries** (Dublin).
+Coastal risk alerting for three Irish beaches — **Fountainstown** (Cork), **Ballybunion** (Kerry), and **Skerries** (Dublin).
 
-BeachSafe ingests decades of open environmental data (Met Éireann weather, Marine Institute wave buoys, moon phase) plus a curated record of past dangerous events (RNLI launches, drownings, rescues). When today's forecast conditions resemble those of past incidents — by onshore wind, wave height, spring tide, and pressure trend — it raises a tiered alert.
+BeachSafe ingests 75+ years of open environmental data (Met Éireann weather reanalysis, Marine Institute wave buoys, astronomical tide, moon phase) alongside a curated record of past dangerous events (RNLI launches, drownings, rescues). It scores each day against a rank-calibrated combined hazard + beach-exposure model, surfaces a tiered alert level, and lets you explore how any incident day compared to historical norms.
 
-> **Pattern match, not a prediction.** Alert levels reflect historical similarity only. Always follow lifeguard and coast guard advice.
+> **Pattern match, not a forecast.** Alert levels reflect how unusual a day's conditions are relative to the beach's own history. Always follow lifeguard and coast guard advice.
 
 ## Stack
 
-- **Next.js 16** (App Router) + **Tailwind CSS v4**
-- **Neon Postgres** via `@neondatabase/serverless`
+- **Next.js** (App Router) + **Tailwind CSS v4**
+- **Neon Postgres** (serverless) via `@neondatabase/serverless`
 - **Recharts** for condition charts
 - **SunCalc** for moon phase / illumination
 - **fast-xml-parser** for Met Éireann forecast XML
@@ -25,12 +24,12 @@ BeachSafe ingests decades of open environmental data (Met Éireann weather, Mari
 pnpm install
 
 # Set up env
-cp .env.local.example .env.local  # add DATABASE_URL
+cp .env.local.example .env.local  # fill in DATABASE_URL
 
-# Run migrations + seed beaches
+# Apply schema + seed beach rows
 pnpm migrate
 
-# Ingest all data (weather → waves → astro → incidents → fingerprints)
+# Ingest all data (weather → waves → astro → incidents → fingerprints → climatology)
 pnpm etl
 
 # Run tests
@@ -49,48 +48,73 @@ pnpm dev
 | `scripts/etl/ingest-waves.ts` | Marine Institute ERDDAP buoy data |
 | `scripts/etl/compute-astro.ts` | SunCalc moon phase / tide range estimation |
 | `scripts/etl/seed-incidents.ts` | Load curated `data/incidents.*.json` |
+| `scripts/etl/enrich-incidents.ts` | Claude extraction: time of day, activity, condition_related |
 | `scripts/etl/build-fingerprints.ts` | Compute feature vectors for all incidents |
+| `scripts/etl/build-climatology.ts` | Per-month + annual percentile ladders for all score metrics |
 | `scripts/etl/run-all.ts` | Orchestrates all of the above (`pnpm etl`) |
 
-## Similarity engine
+## Scoring model
 
-`src/lib/similarity.ts` — pure functions, fully unit-tested, no I/O:
+`src/lib/risk.ts` — `scoreDay()` is the unified scoring entry point used by the forecast, backtest, and retrospective incident pages:
 
-- `fingerprint(observationWindow, beachBearing)` → normalised feature vector
-- `score(candidate, reference)` → 0–1 via weighted Gaussian kernel
-- `matchAll(candidate, fingerprints)` → ranked matches
-- `alertLevel(score)` → `none | watch | warning | severe`
+1. **Hazard score** — climatological percentile of 7 component signals (wave height, tide range, onshore wind, gust, swell, pressure trend, sea temp) per beach + month.
+2. **Exposure score** — beach-crowd proxy: temp, wind, month, weekday/weekend, bank holiday.
+3. **Combined score** — `0.65 × exposure + 0.35 × hazard` (weight chosen by out-of-fold lift sweep).
+4. **Tier** — rank-calibrated against all days at the beach (annual ladder, `month=0`):
+   - **Severe** ≥ 98th percentile
+   - **Warning** ≥ 90th percentile
+   - **Watch** ≥ 75th percentile
+   - **Low** below that
+
+Backtest (5-year blocks, out-of-fold): AUC 0.645–0.797 across three beaches; 39/51 scoped incidents rank at Watch or above. Run `npx tsx --env-file .env.local scripts/analysis/backtest.ts` to verify.
 
 ## Pages
 
 | Route | Description |
 |---|---|
 | `/` | Dashboard: 3 beach cards with live alert levels |
-| `/beach/[slug]` | Incident timeline, 5-day forecast strip, conditions chart |
-| `/beach/[slug]/incident/[id]` | Day-of conditions + 7-day-prior panel + similar incidents |
-| `/methodology` | Data provenance, coverage gaps, similarity algorithm |
-| `/api/alerts?beach=<slug>` | JSON: scored forecast days + nearest incident matches |
+| `/beach/[slug]` | Incident timeline with retrospective tiers, 5-day forecast strip, conditions chart |
+| `/beach/[slug]/incident/[id]` | Day-of conditions, 7-day-prior panel, retrospective prediction, similar incidents |
+| `/methodology` | Data provenance, coverage gaps, scoring algorithm |
+| `/api/alerts?beach=<slug>` | JSON: scored forecast days (hazard, exposure, combined, tier, components) |
 
 ## Deployment
 
-### Vercel
+### Vercel (recommended)
 
-Set `DATABASE_URL` in Vercel environment variables. `APP_VERSION` is injected at build time by the deploy script (`<short-sha> (#<build-number>)`).
+Set `DATABASE_URL` in Vercel environment variables. `APP_VERSION` is injected at build time by the deploy script as `<short-sha> (#<build-number>)`.
 
-### Jenkins / k3s
+### Docker / self-hosted
 
-Requires two existing Jenkins credentials:
-- `flags-database-url` — Neon Postgres connection string
-- `anthropic-api-key` — Anthropic API key
+```bash
+docker build -t beachsafe .
+docker run -e DATABASE_URL=... -e ANTHROPIC_API_KEY=... -p 3000:3000 beachsafe
+```
 
-Customise `deploy/helm/beachsafe/values.yaml` (image registry, nodePort if 30880 is taken).
+### Kubernetes / Helm
 
-The pipeline seeds the database on first run and whenever `RESEED=true` is set.
-App is available at `http://192.168.1.101:30880` after deploy.
+A Helm chart is provided under `deploy/helm/beachsafe/`. Customise `values.yaml` (image registry, nodePort) before deploying:
+
+```bash
+helm upgrade --install beachsafe deploy/helm/beachsafe \
+  --namespace beachsafe --create-namespace \
+  --set image.registry=your.registry.example.com:5000 \
+  --set secrets.databaseUrl="$DATABASE_URL" \
+  --set secrets.anthropicApiKey="$ANTHROPIC_API_KEY"
+```
+
+A `Jenkinsfile` is included for teams running Jenkins on Kubernetes. Configure two credentials in Jenkins:
+- `database-url` — Neon Postgres connection string
+- `anthropic-api-key` — Anthropic API key (used by the ETL enrichment pass only)
 
 ## Data sources
 
 - **Met Éireann** daily CSV: `cli.fusio.net/cli/climate_data/webdata/dly<STATION>.csv`
 - **Marine Institute** ERDDAP: `erddap.marine.ie/erddap/tabledap/IWaveBNetwork`
 - **RNLI Open Data**: `data-rnli.opendata.arcgis.com`
-- **Moon phase**: SunCalc (computed, no external API)
+- **Moon phase / tide range**: SunCalc (computed, no external API)
+- **Forecast**: Met Éireann XML feed + Open-Meteo marine
+
+## Methodology
+
+See `/methodology` in the running app, or `src/app/methodology/page.tsx`, for detailed notes on coverage gaps, feature validation (ROC AUC, lift), and the deliberate null result for the similarity-matching approach.

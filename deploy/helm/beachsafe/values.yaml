@@ -1,5 +1,6 @@
 image:
-  registry: 192.168.1.101:30500
+  # Set to your container registry (e.g. ghcr.io/your-org or your-registry.example.com:5000)
+  registry: your.registry.example.com:5000
   repository: beachsafe
   tag: latest
 
@@ -10,6 +11,7 @@ appVersion: ""
 service:
   type: NodePort
   port: 3000
+  # Change nodePort to any free port in your cluster's NodePort range (30000–32767)
   nodePort: 30880
 
 secrets:
