@@ -85,7 +85,7 @@ spec:
       when { not { expression { params.DEPLOY_ONLY } } }
       steps {
         container('node') {
-          sh 'pnpm test --reporter=junit --outputFile=test-results.xml'
+          sh 'pnpm exec vitest run --reporter=junit --outputFile=test-results.xml'
         }
       }
       post {
