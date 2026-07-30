@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getBeachBySlug, getAllFingerprints } from "@/db/queries";
 import { getForecastDays } from "@/lib/forecast";
 
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const slug = req.nextUrl.searchParams.get("beach") ?? "fountainstown";

@@ -4,7 +4,7 @@ import { AlertBadge } from "@/components/alert-badge";
 import { getForecastDays } from "@/lib/forecast";
 import { getAllFingerprints } from "@/db/queries";
 
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 const BEACH_EMOJI: Record<string, string> = {
   fountainstown: "🏖️",

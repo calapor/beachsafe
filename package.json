@@ -13,7 +13,9 @@
     "etl": "tsx --env-file .env.local scripts/etl/run-all.ts",
     "etl:no-weather": "tsx --env-file .env.local scripts/etl/run-all.ts --skip-weather",
     "etl:ingest-only": "tsx --env-file .env.local scripts/etl/run-all.ts --skip-enrich",
-    "etl:fingerprints": "tsx --env-file .env.local scripts/etl/run-all.ts --skip-all-ingest"
+    "etl:fingerprints": "tsx --env-file .env.local scripts/etl/run-all.ts --skip-all-ingest",
+    "migrate:ci": "tsx scripts/migrate.ts",
+    "seed:ci": "tsx scripts/etl/run-all.ts --skip-weather --skip-waves --skip-tides --skip-rnli --skip-enrich"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.4",

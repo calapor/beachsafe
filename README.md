@@ -73,7 +73,20 @@ pnpm dev
 
 ## Deployment
 
+### Vercel
+
 Set `DATABASE_URL` in Vercel environment variables. `APP_VERSION` is injected at build time by the deploy script (`<short-sha> (#<build-number>)`).
+
+### Jenkins / k3s
+
+Requires two existing Jenkins credentials:
+- `flags-database-url` — Neon Postgres connection string
+- `anthropic-api-key` — Anthropic API key
+
+Customise `deploy/helm/beachsafe/values.yaml` (image registry, nodePort if 30880 is taken).
+
+The pipeline seeds the database on first run and whenever `RESEED=true` is set.
+App is available at `http://192.168.1.101:30880` after deploy.
 
 ## Data sources
 
