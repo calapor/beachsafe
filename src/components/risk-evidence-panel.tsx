@@ -22,9 +22,30 @@ function EvidenceBadge({ e }: { e: string }) {
 
 function pctLabel(p: number | null): string {
   if (p == null) return "—";
-  const pct = Math.round(p * 100);
-  if (pct >= 90) return `${pct}th percentile`;
-  return `${pct}th percentile`;
+  return `${Math.round(p * 100)}th percentile`;
+}
+
+function DialBar({ label, score, drivers }: { label: string; score: number | null; drivers?: string[] }) {
+  const pct = score != null ? Math.round(score * 100) : null;
+  const color =
+    pct == null    ? "bg-gray-200" :
+    pct >= 75      ? "bg-orange-400" :
+    pct >= 50      ? "bg-yellow-300" :
+                     "bg-emerald-300";
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-xs">
+        <span className="font-medium text-gray-700">{label}</span>
+        <span className="text-gray-500">{pct != null ? `${pct}%` : "—"}</span>
+      </div>
+      <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct ?? 0}%` }} />
+      </div>
+      {drivers && drivers.length > 0 && (
+        <p className="text-[10px] text-gray-400">{drivers.join(" · ")}</p>
+      )}
+    </div>
+  );
 }
 
 interface Props {
@@ -34,35 +55,53 @@ interface Props {
   coverage: Coverage;
   topMatches: ScoredMatch[];
   isCalm: boolean;
+  exposureScore?: number | null;
+  exposureDrivers?: string[];
+  hazardScore?: number | null;
 }
 
-export function RiskEvidencePanel({ slug, driver, components, coverage, topMatches, isCalm }: Props) {
-  const elevated   = components.filter((c) => c.score != null && c.score >= 0.90);
-  const normal     = components.filter((c) => c.score != null && c.score <  0.90);
-  const missing    = components.filter((c) => c.score == null);
-
+export function RiskEvidencePanel({
+  slug, driver, components, coverage, topMatches, isCalm,
+  exposureScore, exposureDrivers, hazardScore,
+}: Props) {
+  const elevated = components.filter((c) => c.score != null && c.score >= 0.90);
+  const normal   = components.filter((c) => c.score != null && c.score <  0.90);
+  const missing  = components.filter((c) => c.score == null);
   const uncoveredInputs = missing.flatMap((c) => c.inputs);
 
   return (
     <section className="bg-white rounded-2xl border border-gray-200 p-6 space-y-5">
       <h2 className="font-semibold text-gray-900">Risk evidence</h2>
 
-      {/* 1 — Mechanism sentence */}
+      {/* Two dials */}
+      <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
+        <DialBar
+          label="Sea conditions"
+          score={hazardScore ?? null}
+        />
+        <DialBar
+          label="How busy the beach is likely to be"
+          score={exposureScore ?? null}
+          drivers={exposureDrivers}
+        />
+      </div>
+
+      {/* Primary driver mechanism */}
       {driver ? (
         <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
           <p className="text-sm font-medium text-amber-900">{driver.mechanism}</p>
-          <p className="text-xs text-amber-600 mt-1">Primary driver: {driver.key}</p>
+          <p className="text-xs text-amber-600 mt-1">Primary sea hazard: {driver.key}</p>
         </div>
       ) : isCalm ? (
         <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4">
-          <p className="text-sm font-medium text-emerald-900">Conditions are typical for this time of year.</p>
+          <p className="text-sm font-medium text-emerald-900">Sea conditions are typical for this time of year.</p>
         </div>
       ) : null}
 
-      {/* 2 — Differentiator strip */}
+      {/* Elevated sea hazard factors */}
       {elevated.length > 0 && (
         <div>
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Elevated factors</p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Elevated sea factors</p>
           <div className="space-y-2">
             {elevated.map((c) => (
               <div key={c.key} className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
@@ -80,11 +119,11 @@ export function RiskEvidencePanel({ slug, driver, components, coverage, topMatch
         </div>
       )}
 
-      {/* 3 — "Why NOT severe" on calm days */}
+      {/* Normal factors on calm days */}
       {isCalm && normal.length > 0 && (
         <details className="text-sm">
           <summary className="cursor-pointer text-gray-500 hover:text-gray-700">
-            Normal for this month ({normal.length} factor{normal.length !== 1 ? "s" : ""})
+            Normal conditions ({normal.length} factor{normal.length !== 1 ? "s" : ""})
           </summary>
           <div className="mt-2 space-y-1 pl-3 border-l-2 border-gray-100">
             {normal.map((c) => (
@@ -97,7 +136,7 @@ export function RiskEvidencePanel({ slug, driver, components, coverage, topMatch
         </details>
       )}
 
-      {/* 4 — Precedent */}
+      {/* Precedent */}
       {topMatches.length > 0 && (
         <div>
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Historical precedents</p>
@@ -115,7 +154,7 @@ export function RiskEvidencePanel({ slug, driver, components, coverage, topMatch
         </div>
       )}
 
-      {/* 5 — Coverage footer */}
+      {/* Coverage footer */}
       <div className="border-t border-gray-100 pt-3">
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Data coverage today</p>
         <div className="flex flex-wrap gap-2">

@@ -45,4 +45,6 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Backtest gate (CV lift ≥ 1.5x)
+        run: npx tsx scripts/analysis/backtest.ts
       - run: pnpm build

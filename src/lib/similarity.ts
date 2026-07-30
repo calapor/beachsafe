@@ -14,7 +14,8 @@ export interface FeatureVector {
   pressureDrop: number;
   moonIllum: number;
   tideRange: number;
-  onshoreComponent: number;
+  onshoreComponent: number;  // clamped to [0,1] — offshore winds become 0
+  onshoreSigned: number;     // raw cosine [-1,1] — negative = offshore
   // Phase 1 additions
   tideState: number;       // -1 ebbing … +1 flooding, 0 = slack/unknown
   hoursFromHigh: number;   // 0-1, 0 = at HW, 1 = at LW
@@ -71,6 +72,7 @@ export function normalizeFeatures(raw: Partial<FeatureVector>): FeatureVector {
     moonIllum:       raw.moonIllum       ?? 0,
     tideRange:       raw.tideRange       ?? 0,
     onshoreComponent: raw.onshoreComponent ?? 0,
+    onshoreSigned:   raw.onshoreSigned   ?? 0,
     tideState:       raw.tideState       ?? 0,
     hoursFromHigh:   raw.hoursFromHigh   ?? 0,
     tideConfidence:  raw.tideConfidence  ?? 0,
@@ -261,11 +263,12 @@ export function fingerprint(window: ObsRow[], beachBearingDeg: number, opts?: Fi
   const tideRange = dayOf.tide_range_m ?? 0;
 
   const windDir = dayOf.wind_dir_deg;
-  let onshoreComponent = 0;
+  let onshoreSigned = 0;
   if (windDir != null) {
     const angleDiff = ((windDir - beachBearingDeg + 360) % 360);
-    onshoreComponent = Math.cos((angleDiff * Math.PI) / 180);
+    onshoreSigned = Math.cos((angleDiff * Math.PI) / 180);
   }
+  const onshoreComponent = Math.max(onshoreSigned, 0);
 
   // New Phase 1 features
   const seaTemp = dayOf.sea_temp_c ?? null;
@@ -298,7 +301,8 @@ export function fingerprint(window: ObsRow[], beachBearingDeg: number, opts?: Fi
     pressureDrop: Math.max(pressureDrop, 0) / 30,
     moonIllum,
     tideRange: tideRange / 5,
-    onshoreComponent: Math.max(onshoreComponent, 0),
+    onshoreComponent,
+    onshoreSigned,
     seaTempCold,
     wavePeriod,
     warmCalm,

@@ -126,6 +126,16 @@ export async function getClimatology(beachId: number, month: number) {
   `;
 }
 
+// Annual ladders stored at month=0: combined_score, hazard_score, exposure_score.
+export async function getAnnualClimatology(beachId: number) {
+  const sql = db();
+  return sql`
+    SELECT metric, n, coverage_start, coverage_end, ladder
+    FROM climatology
+    WHERE beach_id = ${beachId} AND month = 0
+  `;
+}
+
 export async function upsertClimatology(
   beachId: number, month: number, metric: string,
   n: number, coverageStart: string, coverageEnd: string, ladder: number[]

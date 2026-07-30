@@ -226,6 +226,9 @@ export default async function BeachPage({ params }: { params: Promise<{ slug: st
             coverage={today.coverage}
             topMatches={today.topMatches}
             isCalm={today.tier === "low" || today.tier === "unknown"}
+            exposureScore={today.exposureScore}
+            exposureDrivers={today.exposureDrivers}
+            hazardScore={today.hazardScore}
           />
         )}
 

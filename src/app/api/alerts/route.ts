@@ -19,18 +19,21 @@ export async function GET(req: NextRequest) {
       fingerprints as never
     );
 
-    // Extended response including hazard, coverage, driver (backward-compatible)
+    // Extended response including hazard, exposure, combined, coverage, driver (backward-compatible)
     const response = {
       beach: slug,
       days: days.map((d) => ({
-        date:          d.date,
-        tier:          d.tier,
-        alertLevel:    d.alertLevel,   // legacy compat
-        hazard:        d.hazardScore,
-        driver:        d.hazardDriver?.key ?? null,
+        date:            d.date,
+        tier:            d.tier,
+        alertLevel:      d.alertLevel,       // legacy compat
+        combined:        d.combinedScore,
+        hazard:          d.hazardScore,
+        exposure:        d.exposureScore,
+        exposureDrivers: d.exposureDrivers,
+        driver:          d.hazardDriver?.key ?? null,
         driverMechanism: d.hazardDriver?.mechanism ?? null,
-        coverage:      d.coverage,
-        components:    d.hazardComponents.map((c) => ({
+        coverage:        d.coverage,
+        components:      d.hazardComponents.map((c) => ({
           key:        c.key,
           score:      c.score,
           percentile: c.percentile,

@@ -35,6 +35,7 @@ export interface HazardResult {
   percentile: number | null;
   driver: Component | null;
   missing: Component[];
+  components: Component[];
 }
 
 function lookup(clim: Record<string, PercentileTable | null>, key: string): PercentileTable | null {
@@ -53,7 +54,6 @@ export function hazardComponents(
   window: ObsRowExtended[],
   clim: Record<string, PercentileTable | null>,
   coverage: Coverage,
-  hasLongSwell: boolean,
 ): Component[] {
   const dayOf = window[window.length - 1] as ObsRowExtended | undefined;
 
@@ -126,33 +126,11 @@ export function hazardComponents(
     inputs: ["wind_dir_deg", "mean_wind_knots"],
   };
 
-  // ── longSwellCalm ────────────────────────────────────────────────────────
-  // Only built when Gate 0.2 confirmed max swell_period_s > 10 s.
-  let longSwellCalm: Component | null = null;
-  if (hasLongSwell) {
-    const swellP = dayOf?.swell_period_s ?? null;
-    const gustKnots = dayOf?.max_gust_knots ?? null;
-    let longSwellScore: number | null = null;
-    if (coverage.swell && swellP != null && gustKnots != null) {
-      const longSwellFired = swellP >= 10 && gustKnots < 12;
-      longSwellScore = longSwellFired ? 1 : 0;
-    }
-    longSwellCalm = {
-      key: "longSwellCalm",
-      raw: dayOf?.swell_period_s ?? null,
-      percentile: longSwellScore,
-      score: longSwellScore,
-      evidence: "unvalidated",
-      mechanism: "Long swell (≥10 s) arriving on a calm day creates powerful shore-break that is visually deceptive.",
-      inputs: ["swell_period_s", "max_gust_knots"],
-    };
-  }
-
   // ── offshoreBlowoff ──────────────────────────────────────────────────────
   let offshoreBlowoffScore: number | null = null;
   if (coverage.weather) {
-    // Score=0 when not warm/offshore (known absence, not missing data)
-    const offshoreStrength = fv.onshoreComponent < 0 ? Math.abs(fv.onshoreComponent) : 0;
+    // onshoreSigned < 0 means wind is blowing offshore; onshoreComponent (clamped) can never be < 0
+    const offshoreStrength = fv.onshoreSigned < 0 ? Math.abs(fv.onshoreSigned) : 0;
     offshoreBlowoffScore = fv.warmCalm > 0 ? offshoreStrength * fv.warmCalm : 0;
   }
   const offshoreBlowoff: Component = {
@@ -213,7 +191,7 @@ export function hazardComponents(
     inputs: ["max_gust_knots", "wave_height_m"],
   };
 
-  const components: Component[] = [
+  return [
     springTideRange,
     ripBand,
     ebbNearLow,
@@ -222,10 +200,6 @@ export function hazardComponents(
     coldShock,
     stormLegacy,
   ];
-
-  if (longSwellCalm) components.push(longSwellCalm);
-
-  return components;
 }
 
 /**
@@ -237,13 +211,13 @@ export function hazardIndex(cs: Component[]): HazardResult {
   const missing   = cs.filter((c) => c.score == null);
 
   if (available.length === 0 || available.length < cs.length / 2) {
-    return { score: null, percentile: null, driver: null, missing };
+    return { score: null, percentile: null, driver: null, missing, components: cs };
   }
 
   const mean = available.reduce((s, c) => s + c.score!, 0) / available.length;
   const driver = [...available].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0] ?? null;
 
-  return { score: mean, percentile: mean, driver, missing };
+  return { score: mean, percentile: mean, driver, missing, components: cs };
 }
 
 /**
