@@ -1,7 +1,6 @@
 import { getMoonIllumination, getTimes } from "suncalc";
 import { XMLParser } from "fast-xml-parser";
 import {
-  fingerprint,
   matchAll,
   computeBaseline,
   BEACH_BEARING,
@@ -9,9 +8,10 @@ import {
   type ScoredMatch,
   type FeatureVector,
 } from "./similarity";
-import { tierFromPercentile, buildClimMap, type Tier } from "./calibration";
-import { hazardComponents, hazardIndex, type Component, type Coverage } from "./hazard";
-import { getObservationWindow, getClimatology } from "@/db/queries";
+import { tierFromPercentile, percentileOf, buildClimMap, type Tier, type PercentileTable } from "./calibration";
+import { type Component, type Coverage } from "./hazard";
+import { scoreDay } from "./risk";
+import { getObservationWindow, getClimatology, getAnnualClimatology } from "@/db/queries";
 
 export interface TideEvent {
   isoUtc: string;      // full UTC ISO string, e.g. "2026-07-30T05:30:00Z"
@@ -41,7 +41,7 @@ export interface ForecastDay {
   temp_max_c: number | null;
   moon_illum: number;
   tide_range_m: number;
-  // Calibrated tier (replaces old alertLevel-from-score)
+  // Calibrated tier from annual combined_score rank
   tier: Tier;
   // Keep for backward compat — same as tier
   alertLevel: "none" | "watch" | "warning" | "severe";
@@ -49,6 +49,11 @@ export interface ForecastDay {
   hazardScore: number | null;
   hazardComponents: Component[];
   hazardDriver: Component | null;
+  // Exposure (crowding) breakdown
+  exposureScore: number | null;
+  exposureDrivers: string[];
+  // Combined blended score (raw, before rank-calibration)
+  combinedScore: number | null;
   // Coverage tracking — unknown tier when weather or waves false
   coverage: Coverage;
   // Tide predictions (Irish time, from IMI_TidePrediction_HighLow)
@@ -344,11 +349,12 @@ export async function getForecastDays(
   const lastDayStr = lastForecastDay.toISOString().split("T")[0];
 
   // Fetch prior observations for the 8-row window (+ 14 for storm-legacy lookback)
-  const [metPoints, waveByDay, priorObs, climRows, allTideEvents] = await Promise.all([
+  const [metPoints, waveByDay, priorObs, climRows, annualClimRows, allTideEvents] = await Promise.all([
     fetchMetForecast(beach.lat, beach.lon),
     fetchMarineForecast(beach.lat, beach.lon),
     getObservationWindow(beach.id, todayStr, 14) as Promise<ObsRow[]>,
     getClimatology(beach.id, month) as Promise<Array<{ metric: string; n: number; coverage_start: unknown; coverage_end: unknown; ladder: unknown }>>,
+    getAnnualClimatology(beach.id) as Promise<Array<{ metric: string; n: number; coverage_start: unknown; coverage_end: unknown; ladder: unknown }>>,
     fetchTidePredictions(beach.slug, todayStr, lastDayStr),
   ]);
 
@@ -361,7 +367,7 @@ export async function getForecastDays(
 
   const metByDay = aggregateByDay(metPoints);
   const clim = buildClimMap(climRows, month);
-  const hasLongSwell = Boolean(clim["swell_period_s"]);
+  const annualClim = buildClimMap(annualClimRows, 0);
 
   const fps = fingerprints.map((fp) => ({
     incidentId: fp.incident_id,
@@ -454,22 +460,26 @@ export async function getForecastDays(
       .slice(-7);
     const fullWindow: ObsRow[] = [...priorWindow, forecastObs];
 
-    const fv = fingerprint(fullWindow, bearing, {
+    const calendar = {
+      year:      d.getFullYear(),
+      month:     d.getMonth() + 1,
+      day:       d.getDate(),
+      dayOfWeek: d.getDay(),
+    };
+
+    const day = scoreDay(fullWindow, bearing, clim, coverage, calendar, {
       highTideTimes: highTimes,
       lowTideTimes:  lowTimes,
       daylight,
     });
 
-    // Hazard index (Stage 3)
-    const components = hazardComponents(fv, fullWindow, clim, coverage, hasLongSwell);
-    const hazResult  = hazardIndex(components);
-
-    // Tier from hazard percentile; "unknown" when primary data unavailable
+    // Tier from rank-calibrated combined score; "unknown" when primary data unavailable
     let tier: Tier = "unknown";
     if (!weatherOk && !wavesOk) {
       tier = "unknown";
     } else {
-      tier = tierFromPercentile(hazResult.percentile);
+      const combinedP = percentileOf(day.combined, annualClim["combined_score"] ?? null);
+      tier = tierFromPercentile(combinedP);
     }
 
     // Map to legacy alert level for backward compat
@@ -478,11 +488,11 @@ export async function getForecastDays(
       : tier as "watch" | "warning" | "severe";
 
     // Precedent lookup — demoted to informational, no longer drives tier
-    const matches = fps.length ? matchAll(fv, fps) : [];
-    void baseline; // still computed to keep imports used
+    const matches = fps.length ? matchAll(day.features, fps) : [];
+    void baseline;
 
-    const springTidePercentile = components.find((c) => c.key === "springTideRange")?.percentile ?? null;
-    const ebbWindows = computeEbbWindows(dayTideEvents, daylightLocal, springTidePercentile);
+    const springTideComp = day.hazard.components.find((c) => c.key === "springTideRange");
+    const ebbWindows = computeEbbWindows(dayTideEvents, daylightLocal, springTideComp?.percentile ?? null);
 
     result.push({
       date:          dateStr,
@@ -499,15 +509,18 @@ export async function getForecastDays(
       tide_range_m:  tideRange,
       tier,
       alertLevel,
-      hazardScore:      hazResult.score,
-      hazardComponents: components,
-      hazardDriver:     hazResult.driver,
+      hazardScore:      day.hazard.score,
+      hazardComponents: day.hazard.components,
+      hazardDriver:     day.hazard.driver,
+      exposureScore:    day.exposure.score,
+      exposureDrivers:  day.exposure.drivers,
+      combinedScore:    day.combined,
       coverage,
       tideEvents:    dayTideEvents,
       ebbWindows,
       daylightLocal,
       topMatches:    matches.slice(0, 3),
-      features:      fv,
+      features:      day.features,
     });
   }
 
