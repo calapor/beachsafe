@@ -61,6 +61,7 @@ spec:
       steps {
         container('node') {
           script {
+            sh 'git config --global --add safe.directory "*"'
             env.IMAGE_TAG = params.IMAGE_TAG_OVERRIDE?.trim()
               ? params.IMAGE_TAG_OVERRIDE.trim()
               : sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
