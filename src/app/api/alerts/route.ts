@@ -4,8 +4,14 @@ import { getForecastDays } from "@/lib/forecast";
 
 export const dynamic = "force-dynamic";
 
+const VALID_SLUGS = new Set(["fountainstown", "ballybunion", "skerries"]);
+
 export async function GET(req: NextRequest) {
   const slug = req.nextUrl.searchParams.get("beach") ?? "fountainstown";
+
+  if (!VALID_SLUGS.has(slug)) {
+    return NextResponse.json({ error: "Beach not found" }, { status: 404 });
+  }
 
   try {
     const beach = await getBeachBySlug(slug) as { id: number; slug: string; lat: number; lon: number } | null;

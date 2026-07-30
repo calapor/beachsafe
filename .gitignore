@@ -37,6 +37,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# conductor / agent workspace context (not for public repos)
+.context/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

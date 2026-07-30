@@ -51,7 +51,8 @@ spec:
   }
 
   environment {
-    REGISTRY = '192.168.1.101:30500'
+    // Set REGISTRY to your container registry host (e.g. ghcr.io/your-org or your-registry.example.com:5000)
+    REGISTRY = 'your.registry.example.com:5000'
     APP_NAME = 'beachsafe'
     NAMESPACE = 'beachsafe'
   }
@@ -104,7 +105,8 @@ spec:
       }
       steps {
         container('node') {
-          withCredentials([string(credentialsId: 'flags-database-url', variable: 'DATABASE_URL')]) {
+          // Credential ID 'database-url' must exist in Jenkins credential store
+          withCredentials([string(credentialsId: 'database-url', variable: 'DATABASE_URL')]) {
             sh 'DATABASE_URL="${DATABASE_URL}" pnpm exec tsx scripts/migrate.ts'
             sh 'DATABASE_URL="${DATABASE_URL}" pnpm exec tsx scripts/etl/run-all.ts --skip-weather --skip-waves --skip-tides --skip-rnli --skip-enrich'
           }
@@ -134,8 +136,9 @@ spec:
       steps {
         container('helm') {
           withCredentials([
-            string(credentialsId: 'flags-database-url', variable: 'DATABASE_URL'),
-            string(credentialsId: 'anthropic-api-key',  variable: 'ANTHROPIC_KEY'),
+            // Credential IDs 'database-url' and 'anthropic-api-key' must exist in Jenkins credential store
+            string(credentialsId: 'database-url',    variable: 'DATABASE_URL'),
+            string(credentialsId: 'anthropic-api-key', variable: 'ANTHROPIC_KEY'),
           ]) {
             sh """
               helm list -n ${NAMESPACE} | grep -q "^${APP_NAME}" && \
