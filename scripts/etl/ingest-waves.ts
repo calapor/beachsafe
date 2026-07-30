@@ -1,118 +1,162 @@
+/**
+ * Ingests wave data from the Open-Meteo marine archive for each beach.
+ * Uses beaches.wave_lat/wave_lon (set by probe-wave-points.ts) rather than
+ * the beach's own lat/lon — Open-Meteo returns all-nulls at coastal grid points.
+ *
+ * Fetches: wave_height_max, swell_wave_height_max, swell_wave_period_max,
+ *          wind_wave_height_max (plus sea_surface_temperature for SST).
+ * Falls back to the IWBNetwork buoy for sea temperature where Open-Meteo lacks it.
+ */
 import { neon } from "@neondatabase/serverless";
 
 const sql = neon(process.env.DATABASE_URL!);
 
-// IWBNetwork uses M2/M3/M5 station IDs; WaveHeight is in metres.
-// M3 (51.22N, -10.55W) is the best Atlantic proxy for both Cork and Kerry south/west coasts.
-// M2 (53.48N, -5.43W) covers the Irish Sea for Skerries.
-const BEACHES = [
-  { slug: "fountainstown", buoyId: "M3" },
-  { slug: "ballybunion",   buoyId: "M3" },
-  { slug: "skerries",      buoyId: "M2" },
-];
+// IWBNetwork buoy → beach mapping for sea temperature fallback
+const BUOY_FOR_SLUG: Record<string, string> = {
+  fountainstown: "M3",
+  ballybunion:   "M3",
+  skerries:      "M2",
+};
 
-const DATASET   = "IWBNetwork";
 const CHUNK_SIZE = 500;
 
-function buildUrl(buoyId: string, fromDate: string, toDate: string): string {
-  const base = `https://erddap.marine.ie/erddap/tabledap/${DATASET}.csv`;
-  const fields = "station_id,time,WaveHeight,WavePeriod,SeaTemperature";
-  const constraints = [
-    `time%3E=${fromDate}`,
-    `time%3C=${toDate}`,
-    `station_id=%22${buoyId}%22`,
-  ].join("&");
-  return `${base}?${fields}&${constraints}`;
+interface DailyWave {
+  date: string;
+  maxWave: number | null;
+  swellHeight: number | null;
+  swellPeriod: number | null;
+  windWaveHeight: number | null;
+  seaTemp: number | null;
 }
 
-async function fetchWaves(buoyId: string, fromDate: string, toDate: string) {
-  const url = buildUrl(buoyId, fromDate, toDate);
-  console.log(`  Fetching waves: ${buoyId} from ${fromDate} to ${toDate}`);
+async function fetchOpenMeteoWaves(lat: number, lon: number, fromDate: string, toDate: string): Promise<DailyWave[]> {
+  const url =
+    `https://marine-api.open-meteo.com/v1/marine` +
+    `?latitude=${lat}&longitude=${lon}` +
+    `&start_date=${fromDate}&end_date=${toDate}` +
+    `&daily=wave_height_max,swell_wave_height_max,swell_wave_period_max,wind_wave_height_max,sea_surface_temperature_max`;
+
   const res = await fetch(url);
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    console.warn(`  HTTP ${res.status} for buoy ${buoyId} — skipping. ${body.slice(0, 200)}`);
+    console.warn(`  Open-Meteo HTTP ${res.status} for (${lat}, ${lon}) — skipping`);
     return [];
   }
-  const text = await res.text();
-  const lines = text.trim().split("\n");
-  if (lines.length < 3) return [];
 
-  const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
-  const records: Array<{ date: string; waveHeight: number | null; wavePeriod: number | null; seaTemp: number | null }> = [];
+  const data = await res.json() as {
+    daily?: {
+      time: string[];
+      wave_height_max: (number | null)[];
+      swell_wave_height_max: (number | null)[];
+      swell_wave_period_max: (number | null)[];
+      wind_wave_height_max: (number | null)[];
+      sea_surface_temperature_max: (number | null)[];
+    };
+  };
 
-  for (let i = 2; i < lines.length; i++) {
-    const parts = lines[i].split(",");
-    if (parts.length < headers.length) continue;
-    const row: Record<string, string> = {};
-    headers.forEach((h, idx) => { row[h] = parts[idx]?.trim() ?? ""; });
+  if (!data.daily) return [];
 
-    const time = row["time"];
-    if (!time) continue;
-    const date = time.split("T")[0];
-
-    const wh = parseFloat(row["waveheight"]);
-    const wp = parseFloat(row["waveperiod"]);
-    const st = parseFloat(row["seatemperature"]);
-
-    records.push({
-      date,
-      waveHeight: isNaN(wh) ? null : wh,
-      wavePeriod: isNaN(wp) ? null : wp,
-      seaTemp:    isNaN(st) ? null : st,
-    });
-  }
-  return records;
-}
-
-function aggregate(records: Array<{ date: string; waveHeight: number | null; wavePeriod: number | null; seaTemp: number | null }>) {
-  const byDate: Record<string, { heights: number[]; periods: number[]; temps: number[] }> = {};
-  for (const r of records) {
-    if (!byDate[r.date]) byDate[r.date] = { heights: [], periods: [], temps: [] };
-    if (r.waveHeight !== null) byDate[r.date].heights.push(r.waveHeight);
-    if (r.wavePeriod !== null) byDate[r.date].periods.push(r.wavePeriod);
-    if (r.seaTemp    !== null) byDate[r.date].temps.push(r.seaTemp);
-  }
-  return Object.entries(byDate).map(([date, v]) => ({
+  const { time, wave_height_max, swell_wave_height_max, swell_wave_period_max, wind_wave_height_max, sea_surface_temperature_max } = data.daily;
+  return time.map((date, i) => ({
     date,
-    maxWave:     v.heights.length ? Math.max(...v.heights) : null,
-    meanPeriod:  v.periods.length ? v.periods.reduce((a, b) => a + b, 0) / v.periods.length : null,
-    meanSeaTemp: v.temps.length   ? v.temps.reduce((a, b) => a + b, 0) / v.temps.length : null,
+    maxWave:       wave_height_max?.[i]             ?? null,
+    swellHeight:   swell_wave_height_max?.[i]       ?? null,
+    swellPeriod:   swell_wave_period_max?.[i]       ?? null,
+    windWaveHeight: wind_wave_height_max?.[i]       ?? null,
+    seaTemp:       sea_surface_temperature_max?.[i] ?? null,
   }));
 }
 
-async function ingestWavesForBeach(beachId: number, buoyId: string) {
-  const fromDate = "2001-01-01T00:00:00Z";
-  const toDate   = new Date().toISOString().split("T")[0] + "T23:59:59Z";
+async function fetchBuoySeaTemp(buoyId: string, fromDate: string, toDate: string): Promise<Record<string, number>> {
+  const base = `https://erddap.marine.ie/erddap/tabledap/IWBNetwork.csv`;
+  const fields = "station_id,time,SeaTemperature";
+  const constraints = [
+    `time%3E=${fromDate}T00:00:00Z`,
+    `time%3C=${toDate}T23:59:59Z`,
+    `station_id=%22${buoyId}%22`,
+  ].join("&");
+  const url = `${base}?${fields}&${constraints}`;
 
-  const records = await fetchWaves(buoyId, fromDate, toDate);
-  const daily   = aggregate(records).filter((r) => r.maxWave || r.meanPeriod || r.meanSeaTemp);
-  console.log(`  Aggregated ${daily.length} wave days for buoy ${buoyId} — upserting in chunks of ${CHUNK_SIZE}...`);
+  const res = await fetch(url);
+  if (!res.ok) return {};
+  const text = await res.text();
+  const lines = text.trim().split("\n");
+  if (lines.length < 3) return {};
+
+  const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
+  const timeIdx = headers.indexOf("time");
+  const tempIdx = headers.findIndex((h) => h.includes("seatemperature"));
+  if (timeIdx === -1 || tempIdx === -1) return {};
+
+  const byDate: Record<string, number[]> = {};
+  for (let i = 2; i < lines.length; i++) {
+    const parts = lines[i].split(",");
+    const time = parts[timeIdx]?.trim();
+    const temp = parseFloat(parts[tempIdx]?.trim() ?? "");
+    if (!time || isNaN(temp)) continue;
+    const date = time.split("T")[0];
+    if (!byDate[date]) byDate[date] = [];
+    byDate[date].push(temp);
+  }
+
+  const result: Record<string, number> = {};
+  for (const [date, temps] of Object.entries(byDate)) {
+    result[date] = temps.reduce((a, b) => a + b, 0) / temps.length;
+  }
+  return result;
+}
+
+async function ingestWavesForBeach(beachId: number, slug: string, waveLat: number, waveLon: number) {
+  const fromDate = "2000-01-01";
+  const toDate   = new Date().toISOString().split("T")[0];
+
+  console.log(`  Fetching Open-Meteo waves for ${slug} at (${waveLat}, ${waveLon})`);
+  const daily = await fetchOpenMeteoWaves(waveLat, waveLon, fromDate, toDate);
+  if (!daily.length) {
+    console.warn(`  No wave data returned for ${slug} — run probe-wave-points.ts first`);
+    return;
+  }
+
+  // Fetch SST from buoy to fill gaps in Open-Meteo SST
+  const buoyId = BUOY_FOR_SLUG[slug];
+  const buoySst = buoyId ? await fetchBuoySeaTemp(buoyId, fromDate, toDate) : {};
+
+  const hasData = daily.filter((r) =>
+    r.maxWave != null || r.swellHeight != null || r.swellPeriod != null || r.seaTemp != null
+  );
+  console.log(`  ${hasData.length}/${daily.length} days with wave data — upserting in chunks of ${CHUNK_SIZE}...`);
 
   for (let i = 0; i < daily.length; i += CHUNK_SIZE) {
-    const chunk   = daily.slice(i, i + CHUNK_SIZE);
-    const beachIds      = chunk.map(() => beachId);
-    const dates         = chunk.map((r) => r.date);
-    const waveHeights   = chunk.map((r) => r.maxWave);
-    const wavePeriods   = chunk.map((r) => r.meanPeriod);
-    const seaTemps      = chunk.map((r) => r.meanSeaTemp);
+    const chunk       = daily.slice(i, i + CHUNK_SIZE);
+    const beachIds    = chunk.map(() => beachId);
+    const dates       = chunk.map((r) => r.date);
+    const waveHeights = chunk.map((r) => r.maxWave);
+    const swellHts    = chunk.map((r) => r.swellHeight);
+    const swellPers   = chunk.map((r) => r.swellPeriod);
+    const windWaveHts = chunk.map((r) => r.windWaveHeight);
+    const seaTemps    = chunk.map((r) => r.seaTemp ?? buoySst[r.date] ?? null);
 
     await sql`
-      INSERT INTO observations (beach_id, date, wave_height_m, wave_period_s, sea_temp_c, source_flags)
-      SELECT b::integer, d::date, wh, wp, st, '{"waves":"erddap_buoy"}'::jsonb
+      INSERT INTO observations
+        (beach_id, date, wave_height_m, swell_height_m, swell_period_s, wind_wave_height_m, sea_temp_c, source_flags)
+      SELECT b::integer, d::date, wh, sh, sp, ww, st, '{"waves":"open-meteo"}'::jsonb
       FROM unnest(
         ${beachIds}::integer[],
         ${dates}::text[],
         ${waveHeights}::float4[],
-        ${wavePeriods}::float4[],
+        ${swellHts}::float4[],
+        ${swellPers}::float4[],
+        ${windWaveHts}::float4[],
         ${seaTemps}::float4[]
-      ) AS t(b, d, wh, wp, st)
+      ) AS t(b, d, wh, sh, sp, ww, st)
       ON CONFLICT (beach_id, date) DO UPDATE SET
-        wave_height_m = EXCLUDED.wave_height_m,
-        wave_period_s = EXCLUDED.wave_period_s,
-        sea_temp_c    = EXCLUDED.sea_temp_c,
-        source_flags  = COALESCE(observations.source_flags, '{}'::jsonb) || EXCLUDED.source_flags
+        wave_height_m      = EXCLUDED.wave_height_m,
+        swell_height_m     = EXCLUDED.swell_height_m,
+        swell_period_s     = EXCLUDED.swell_period_s,
+        wind_wave_height_m = EXCLUDED.wind_wave_height_m,
+        sea_temp_c         = COALESCE(EXCLUDED.sea_temp_c, observations.sea_temp_c),
+        source_flags       = COALESCE(observations.source_flags, '{}'::jsonb) || EXCLUDED.source_flags
     `;
+
     if ((i / CHUNK_SIZE) % 5 === 0) {
       console.log(`    ${Math.min(i + CHUNK_SIZE, daily.length)}/${daily.length}`);
     }
@@ -120,10 +164,16 @@ async function ingestWavesForBeach(beachId: number, buoyId: string) {
 }
 
 async function main() {
-  for (const beach of BEACHES) {
-    const rows = await sql`SELECT id FROM beaches WHERE slug = ${beach.slug}`;
-    if (!rows.length) { console.warn(`Beach not found: ${beach.slug}`); continue; }
-    await ingestWavesForBeach((rows[0] as { id: number }).id, beach.buoyId);
+  const beaches = await sql`
+    SELECT id, slug, wave_lat, wave_lon FROM beaches
+  ` as Array<{ id: number; slug: string; wave_lat: number | null; wave_lon: number | null }>;
+
+  for (const beach of beaches) {
+    if (beach.wave_lat == null || beach.wave_lon == null) {
+      console.warn(`Beach ${beach.slug} has no wave_lat/wave_lon — run probe-wave-points.ts first`);
+      continue;
+    }
+    await ingestWavesForBeach(beach.id, beach.slug, beach.wave_lat, beach.wave_lon);
   }
   console.log("Wave ingest complete.");
 }

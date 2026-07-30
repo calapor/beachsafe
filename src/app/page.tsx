@@ -1,8 +1,7 @@
 import Link from "next/link";
-import { getBeaches } from "@/db/queries";
-import { AlertBadge } from "@/components/alert-badge";
+import { getBeaches, getAllFingerprints } from "@/db/queries";
+import { AlertBadge, type Level } from "@/components/alert-badge";
 import { getForecastDays } from "@/lib/forecast";
-import { getAllFingerprints } from "@/db/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -18,17 +17,21 @@ const BEACH_DESC: Record<string, string> = {
   skerries:      "Tidal East-coast beach north of Dublin. Sensitive to NE swell and exposed tidal eddies.",
 };
 
-async function getBeachAlertLevel(beach: { id: number; slug: string; lat: number; lon: number }): Promise<"none" | "watch" | "warning" | "severe"> {
+async function getBeachAlertLevel(beach: { id: number; slug: string; lat: number; lon: number }): Promise<{ level: string; driver: string | null }> {
   try {
     const fps = await getAllFingerprints(beach.id);
     const days = await getForecastDays(
-      { slug: beach.slug, lat: beach.lat, lon: beach.lon },
+      { id: beach.id, slug: beach.slug, lat: beach.lat, lon: beach.lon },
       fps as never,
       1
     );
-    return days[0]?.alertLevel ?? "none";
+    const day = days[0];
+    if (!day) return { level: "unknown", driver: null };
+    const level = day.tier === "unknown" ? "unknown" : day.alertLevel;
+    const driver = day.hazardDriver?.mechanism?.split(".")[0] ?? null;
+    return { level, driver };
   } catch {
-    return "none";
+    return { level: "unknown", driver: null };
   }
 }
 
@@ -68,7 +71,7 @@ export default async function Dashboard() {
         ) : (
           <div className="grid gap-6 sm:grid-cols-1 md:grid-cols-3">
             {beaches.map(async (beach) => {
-              const level = await getBeachAlertLevel(beach);
+              const { level, driver } = await getBeachAlertLevel(beach);
               return (
                 <Link
                   key={beach.slug}
@@ -85,8 +88,11 @@ export default async function Dashboard() {
                   <p className="text-xs text-gray-600 leading-relaxed flex-1">
                     {BEACH_DESC[beach.slug]}
                   </p>
+                  {driver && (
+                    <p className="text-xs text-gray-500 italic line-clamp-2">{driver}</p>
+                  )}
                   <div className="flex items-center justify-between">
-                    <AlertBadge level={level} />
+                    <AlertBadge level={level as Level} showFreq />
                     <span className="text-xs text-gray-400">Today →</span>
                   </div>
                 </Link>

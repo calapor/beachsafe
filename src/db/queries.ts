@@ -23,6 +23,7 @@ export async function getIncidentsByBeach(beachId: number) {
     LEFT JOIN incident_fingerprints f ON f.incident_id = i.id
     WHERE i.beach_id = ${beachId}
       AND i.condition_related IS NOT FALSE
+      AND i.activity IN ('swimmer', 'shore')
     ORDER BY i.date DESC
   `;
 }
@@ -68,6 +69,8 @@ export async function getAllFingerprints(beachId: number) {
     FROM incident_fingerprints f
     JOIN incidents i ON i.id = f.incident_id
     WHERE i.beach_id = ${beachId}
+      AND i.activity IN ('swimmer', 'shore')
+      AND i.condition_related IS NOT FALSE
   `;
 }
 
@@ -97,6 +100,76 @@ export async function upsertObservation(beachId: number, date: string, data: Rec
      ON CONFLICT (beach_id, date) DO UPDATE SET ${setClauses}`,
     vals
   );
+}
+
+export async function getExcludedIncidentCounts(beachId: number) {
+  const sql = db();
+  return sql`
+    SELECT activity, exclusion_cause, count(*)::int AS n
+    FROM incidents
+    WHERE beach_id = ${beachId}
+      AND (
+        activity NOT IN ('swimmer', 'shore')
+        OR condition_related IS FALSE
+      )
+    GROUP BY activity, exclusion_cause
+    ORDER BY n DESC
+  `;
+}
+
+export async function getClimatology(beachId: number, month: number) {
+  const sql = db();
+  return sql`
+    SELECT metric, n, coverage_start, coverage_end, ladder
+    FROM climatology
+    WHERE beach_id = ${beachId} AND month = ${month}
+  `;
+}
+
+export async function upsertClimatology(
+  beachId: number, month: number, metric: string,
+  n: number, coverageStart: string, coverageEnd: string, ladder: number[]
+) {
+  const sql = db();
+  await sql`
+    INSERT INTO climatology (beach_id, month, metric, n, coverage_start, coverage_end, ladder, computed_at)
+    VALUES (${beachId}, ${month}, ${metric}, ${n}, ${coverageStart}::date, ${coverageEnd}::date, ${JSON.stringify(ladder)}, NOW())
+    ON CONFLICT (beach_id, month, metric) DO UPDATE SET
+      n              = EXCLUDED.n,
+      coverage_start = EXCLUDED.coverage_start,
+      coverage_end   = EXCLUDED.coverage_end,
+      ladder         = EXCLUDED.ladder,
+      computed_at    = EXCLUDED.computed_at
+  `;
+}
+
+export async function getFeatureDiscrimination() {
+  const sql = db();
+  return sql`SELECT * FROM feature_discrimination ORDER BY feature, scope`;
+}
+
+export async function upsertFeatureDiscrimination(
+  feature: string, scope: string, nCase: number, nControl: number,
+  auc: number | null, aucLo: number | null, aucHi: number | null,
+  lift: number | null, liftLo: number | null, liftHi: number | null,
+) {
+  const sql = db();
+  await sql`
+    INSERT INTO feature_discrimination
+      (feature, scope, n_case, n_control, auc, auc_lo, auc_hi, lift, lift_lo, lift_hi, computed_at)
+    VALUES
+      (${feature}, ${scope}, ${nCase}, ${nControl}, ${auc}, ${aucLo}, ${aucHi}, ${lift}, ${liftLo}, ${liftHi}, NOW())
+    ON CONFLICT (feature, scope) DO UPDATE SET
+      n_case      = EXCLUDED.n_case,
+      n_control   = EXCLUDED.n_control,
+      auc         = EXCLUDED.auc,
+      auc_lo      = EXCLUDED.auc_lo,
+      auc_hi      = EXCLUDED.auc_hi,
+      lift        = EXCLUDED.lift,
+      lift_lo     = EXCLUDED.lift_lo,
+      lift_hi     = EXCLUDED.lift_hi,
+      computed_at = EXCLUDED.computed_at
+  `;
 }
 
 export async function upsertIncidentFingerprint(incidentId: number, features: object) {

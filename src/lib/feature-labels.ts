@@ -48,7 +48,7 @@ export const FEATURE_LABELS: Record<string, FeatureLabel> = {
     format: (v) => v > 0.8 ? "Near LW" : v > 0.5 ? "Mid-ebb/flood" : "Near HW",
   },
   wavePeriod: {
-    label: "Wave period",
+    label: "Mean wave period",
     unit: "s",
     format: (v) => `${(v * 20).toFixed(0)} s`,
   },

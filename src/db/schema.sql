@@ -10,7 +10,9 @@ CREATE TABLE IF NOT EXISTS beaches (
   met_station_no TEXT,
   wave_buoy_id   TEXT,
   tide_station_id TEXT,
-  notes          TEXT
+  notes          TEXT,
+  wave_lat       DOUBLE PRECISION,
+  wave_lon       DOUBLE PRECISION
 );
 
 CREATE TABLE IF NOT EXISTS observations (
@@ -29,6 +31,9 @@ CREATE TABLE IF NOT EXISTS observations (
   wave_height_m    REAL,
   wave_period_s    REAL,
   sea_temp_c       REAL,
+  swell_height_m   REAL,
+  swell_period_s   REAL,
+  wind_wave_height_m REAL,
   -- astronomical (computed)
   moon_phase       REAL,
   moon_illum       REAL,
@@ -66,4 +71,31 @@ CREATE TABLE IF NOT EXISTS incident_fingerprints (
   incident_id  INTEGER PRIMARY KEY REFERENCES incidents(id),
   features     JSONB NOT NULL,
   computed_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS climatology (
+  beach_id       INT NOT NULL REFERENCES beaches(id),
+  month          SMALLINT NOT NULL,
+  metric         TEXT NOT NULL,
+  n              INT NOT NULL,
+  coverage_start DATE,
+  coverage_end   DATE,
+  ladder         JSONB NOT NULL,
+  computed_at    TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (beach_id, month, metric)
+);
+
+CREATE TABLE IF NOT EXISTS feature_discrimination (
+  feature     TEXT NOT NULL,
+  scope       TEXT NOT NULL,
+  n_case      INT NOT NULL,
+  n_control   INT NOT NULL,
+  auc         REAL,
+  auc_lo      REAL,
+  auc_hi      REAL,
+  lift        REAL,
+  lift_lo     REAL,
+  lift_hi     REAL,
+  computed_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (feature, scope)
 );

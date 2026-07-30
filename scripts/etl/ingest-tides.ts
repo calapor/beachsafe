@@ -7,10 +7,12 @@ const sql = neon(process.env.DATABASE_URL!);
 // Ballycotton Harbour is the closest gauge to Fountainstown (12 km east of Crosshaven).
 // Inishmore (Aran Islands) shares the same longitude as Ballybunion and is the closest
 // west-coast gauge (67 km north) — tidal timing is representative of the Kerry coast.
+// springRange: approximate mean spring tidal range at this station (m), used as a sanity
+// bound in robustRange — a computed range outside [0.3x, 1.5x] of this is rejected.
 const BEACHES = [
-  { slug: "fountainstown", stationId: "Ballycotton Harbour" },
-  { slug: "ballybunion",   stationId: "Inishmore" },
-  { slug: "skerries",      stationId: "Skerries Harbour" },
+  { slug: "fountainstown", stationId: "Ballycotton Harbour", springRange: 3.8 },
+  { slug: "ballybunion",   stationId: "Inishmore",           springRange: 4.5 },
+  { slug: "skerries",      stationId: "Skerries Harbour",    springRange: 3.2 },
 ];
 
 const DATASET    = "IrishNationalTideGaugeNetwork";
@@ -48,6 +50,17 @@ function findExtrema(times: string[], vals: (number | null)[], type: "max" | "mi
     }
   }
   return results;
+}
+
+// Returns the percentile range of gauge levels, bounded against the known spring range.
+// Rejects NULL (not zero) when data is insufficient or the range is physically implausible.
+function robustRange(levels: (number | null)[], springRange: number): number | null {
+  const clean = levels.filter((v): v is number => v != null).sort((a, b) => a - b);
+  if (clean.length < 20) return null;
+  const at = (p: number) => clean[Math.floor(p * (clean.length - 1))];
+  const range = at(0.99) - at(0.01);
+  if (range < springRange * 0.3 || range > springRange * 1.5) return null;
+  return parseFloat(range.toFixed(2));
 }
 
 function buildUrl(stationId: string, fromDate: string, toDate: string): string {
@@ -97,12 +110,15 @@ async function fetchTideReadings(stationId: string, fromDate: string, toDate: st
 
 interface DailyTide {
   date: string;
-  tideRange: number;
+  tideRange: number | null;
   highTimes: string;   // comma-joined HH:MM, or empty
   lowTimes: string;
 }
 
-function aggregateTides(records: Array<{ time: string; level: number | null }>): DailyTide[] {
+function aggregateTides(
+  records: Array<{ time: string; level: number | null }>,
+  springRange: number,
+): DailyTide[] {
   const byDate: Record<string, { times: string[]; levels: (number | null)[] }> = {};
   for (const r of records) {
     const date = r.time.split("T")[0];
@@ -114,32 +130,32 @@ function aggregateTides(records: Array<{ time: string; level: number | null }>):
   return Object.entries(byDate)
     .sort(([a], [b]) => a.localeCompare(b))
     .flatMap(([date, { times, levels }]) => {
-      const clean = levels.filter((v): v is number => v !== null);
-      if (!clean.length) return [];
+      const range = robustRange(levels, springRange);
+      if (range === null) return [];
       return [{
         date,
-        tideRange: Math.max(...clean) - Math.min(...clean),
+        tideRange: range,
         highTimes: findExtrema(times, levels, "max").join(","),
         lowTimes:  findExtrema(times, levels, "min").join(","),
       }];
     });
 }
 
-async function ingestTidesForStation(beachId: number, stationId: string) {
+async function ingestTidesForStation(beachId: number, stationId: string, springRange: number) {
   const fromDate = "2006-01-01T00:00:00Z";
   const toDate   = new Date().toISOString().split("T")[0] + "T23:59:59Z";
 
   const records = await fetchTideReadings(stationId, fromDate, toDate);
   if (!records.length) return;
 
-  const daily = aggregateTides(records);
+  const daily = aggregateTides(records, springRange);
   console.log(`  Aggregated ${daily.length} tide days for ${stationId} — upserting in chunks of ${CHUNK_SIZE}...`);
 
   for (let i = 0; i < daily.length; i += CHUNK_SIZE) {
     const chunk       = daily.slice(i, i + CHUNK_SIZE);
     const beachIds    = chunk.map(() => beachId);
     const dates       = chunk.map((r) => r.date);
-    const tideRanges  = chunk.map((r) => r.tideRange);
+    const tideRanges  = chunk.map((r) => r.tideRange ?? null);
     const highTimes   = chunk.map((r) => r.highTimes || null);
     const lowTimes    = chunk.map((r) => r.lowTimes  || null);
 
@@ -169,7 +185,7 @@ async function main() {
   for (const beach of BEACHES) {
     const rows = await sql`SELECT id FROM beaches WHERE slug = ${beach.slug}`;
     if (!rows.length) { console.warn(`Beach not found: ${beach.slug}`); continue; }
-    await ingestTidesForStation((rows[0] as { id: number }).id, beach.stationId);
+    await ingestTidesForStation((rows[0] as { id: number }).id, beach.stationId, beach.springRange);
   }
   console.log("Tide ingest complete.");
 }

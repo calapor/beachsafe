@@ -29,6 +29,16 @@ async function main() {
   await sql.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS activity_source TEXT`);
   await sql.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS condition_related BOOLEAN`);
   await sql.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS exclusion_cause TEXT`);
+  await sql.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS activity_evidence TEXT`);
+
+  // Beach-specific offshore wave point (probe-wave-points.ts writes these)
+  await sql.query(`ALTER TABLE beaches ADD COLUMN IF NOT EXISTS wave_lat DOUBLE PRECISION`);
+  await sql.query(`ALTER TABLE beaches ADD COLUMN IF NOT EXISTS wave_lon DOUBLE PRECISION`);
+
+  // Swell and wind-wave components from Open-Meteo marine (ingest-waves.ts v2)
+  await sql.query(`ALTER TABLE observations ADD COLUMN IF NOT EXISTS swell_height_m REAL`);
+  await sql.query(`ALTER TABLE observations ADD COLUMN IF NOT EXISTS swell_period_s REAL`);
+  await sql.query(`ALTER TABLE observations ADD COLUMN IF NOT EXISTS wind_wave_height_m REAL`);
   // Deduplicate before creating the index (keeps the row with the lowest id per external_id)
   await sql.query(`
     DELETE FROM incident_fingerprints
