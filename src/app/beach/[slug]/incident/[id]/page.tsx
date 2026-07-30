@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getIncidentById, getObservationWindow, getAllFingerprints, getAnnualObservations } from "@/db/queries";
+import { getIncidentById, getObservationWindow, getAllFingerprints, getAnnualObservations, getAnnualClimatology } from "@/db/queries";
 import { MoonGlyph } from "@/components/moon-glyph";
 import { ConditionsChart } from "@/components/conditions-chart";
 import { IncidentVerdict } from "@/components/incident-verdict";
@@ -17,6 +17,7 @@ import {
 import { fetchHourlyConditions, pickAtAndBefore } from "@/lib/incident-conditions";
 import { FEATURE_LABELS } from "@/lib/feature-labels";
 import { getHistoricalHazard, type HistoricalHazardResult } from "@/lib/historical-hazard";
+import { buildClimMap } from "@/lib/calibration";
 import { AlertBadge } from "@/components/alert-badge";
 import type { Level } from "@/components/alert-badge";
 
@@ -47,7 +48,7 @@ function RetroHazardCard({ result, beachName, date }: {
     <section className="bg-white rounded-2xl border border-gray-200 p-6">
       <h2 className="font-semibold text-gray-900 mb-1">What would BeachSafe have predicted?</h2>
       <p className="text-xs text-gray-500 mb-4">
-        Retrospective score using observed conditions for {beachName} on {date}, calibrated against historical norms.
+        Retrospective score using observed conditions for {beachName} on {date}. Blends hazard and beach exposure, rank-calibrated against all days at this beach.
       </p>
       {isScored ? (
         <div className="flex flex-col gap-3">
@@ -61,7 +62,8 @@ function RetroHazardCard({ result, beachName, date }: {
           </div>
           {result.percentile != null && (
             <p className="text-xs text-gray-400">
-              Hazard percentile: {(result.percentile * 100).toFixed(0)}th — worse than {(result.percentile * 100).toFixed(0)}% of days at this beach in this month.
+              Ranked in the {(result.percentile * 100).toFixed(0)}th percentile of all days at {beachName}
+              {result.coverageStart ? ` since ${result.coverageStart.slice(0, 4)}` : ""}.
             </p>
           )}
         </div>
@@ -105,17 +107,23 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
   const bearing = BEACH_BEARING[incident.beach_slug] ?? 270;
   const timeLabel = incident.time_of_day ? String(incident.time_of_day).slice(0, 5) : null;
 
-  const [window7, allFps, annualObsRaw] = await Promise.all([
+  const [window7, allFps, annualObsRaw, annualClimatologyRows] = await Promise.all([
     getObservationWindow(incident.beach_id, isoDate, 8),
     getAllFingerprints(incident.beach_id),
     getAnnualObservations(incident.beach_id),
+    getAnnualClimatology(incident.beach_id) as Promise<Array<{
+      metric: string; n: number; coverage_start: unknown; coverage_end: unknown; ladder: unknown;
+    }>>,
   ]);
+  const annualClim = buildClimMap(annualClimatologyRows, 0);
 
   let retroHazard: HistoricalHazardResult | null = null;
   try {
     retroHazard = await getHistoricalHazard(
       { id: incident.beach_id, slug: incident.beach_slug },
       isoDate,
+      undefined,
+      annualClim,
     );
   } catch (e) { console.error("[RetroHazard]", e); }
 

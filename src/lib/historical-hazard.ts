@@ -1,15 +1,19 @@
-import { getObservationWindow, getClimatology } from "@/db/queries";
-import { fingerprint, BEACH_BEARING, type ObsRow } from "./similarity";
-import { buildClimMap, tierFromPercentile, type Tier, type PercentileTable } from "./calibration";
-import { hazardComponents, hazardIndex, type Coverage, type Component, type ObsRowExtended } from "./hazard";
+import { getObservationWindow, getClimatology, getAnnualClimatology } from "@/db/queries";
+import { BEACH_BEARING, type ObsRow } from "./similarity";
+import { buildClimMap, percentileOf, tierFromPercentile, type Tier, type PercentileTable } from "./calibration";
+import { scoreDay, type DayCalendar } from "./risk";
+import type { Coverage, Component, ObsRowExtended } from "./hazard";
 
 export interface HistoricalHazardResult {
   tier: Tier;
-  score: number | null;
-  percentile: number | null;
+  percentile: number | null;     // calibrated annual rank (0–1), drives the tier
+  hazardScore: number | null;
+  exposureScore: number | null;
+  combinedScore: number | null;
   coverage: Coverage;
   components: Component[];
   waveDataAvailable: boolean;
+  coverageStart: string | null;  // from annual ladder, for UI copy
 }
 
 // Neon's tagged template treats a "YYYY-MM-DD" string as timestamptz midnight UTC;
@@ -24,12 +28,15 @@ function nextDay(dateStr: string): string {
 const ds = (d: unknown): string =>
   d instanceof Date ? (d as Date).toISOString().slice(0, 10) : String(d).slice(0, 10);
 
+type AnnualClim = Record<string, PercentileTable>;
+
 export async function getHistoricalHazard(
   beach: { id: number; slug: string },
   incidentDate: string,
   climCache?: Map<number, Record<string, PercentileTable>>,
+  annualClimArg?: AnnualClim | null,
 ): Promise<HistoricalHazardResult | null> {
-  const window = await getObservationWindow(beach.id, nextDay(incidentDate), 8) as ObsRow[];
+  const window = await getObservationWindow(beach.id, nextDay(incidentDate), 8) as ObsRowExtended[];
 
   const targetRow = window.find((r) => ds(r.date) === incidentDate);
   if (!targetRow) return null;
@@ -53,23 +60,47 @@ export async function getHistoricalHazard(
     climCache?.set(month, clim);
   }
 
-  const hasLongSwell = Boolean(clim["swell_period_s"]);
-  const bearing = BEACH_BEARING[beach.slug] ?? 270;
-  const fv = fingerprint(window, bearing);
+  // Annual climatology (month=0 rows: combined_score, hazard_score, exposure_score).
+  // Caller may supply it from a shared fetch; otherwise fetch here.
+  let annualClim: AnnualClim;
+  if (annualClimArg != null) {
+    annualClim = annualClimArg;
+  } else {
+    const annualRows = await getAnnualClimatology(beach.id) as Array<{
+      metric: string; n: number; coverage_start: unknown; coverage_end: unknown; ladder: unknown;
+    }>;
+    annualClim = buildClimMap(annualRows, 0);
+  }
 
-  const components = hazardComponents(fv, window as ObsRowExtended[], clim, coverage, hasLongSwell);
-  const hazResult = hazardIndex(components);
+  const bearing = BEACH_BEARING[beach.slug] ?? 270;
+  const year = parseInt(incidentDate.slice(0, 4), 10);
+  const day  = parseInt(incidentDate.slice(8, 10), 10);
+  const calendar: DayCalendar = {
+    year,
+    month,
+    day,
+    dayOfWeek: new Date(incidentDate).getUTCDay(),
+  };
+
+  const dayScore = scoreDay(window, bearing, clim, coverage, calendar);
+
+  const annualTable = annualClim["combined_score"] ?? null;
+  const percentile = percentileOf(dayScore.combined, annualTable);
+  const coverageStart = annualTable?.coverageStart ?? null;
 
   const tier: Tier = (!coverage.weather && !coverage.waves)
     ? "unknown"
-    : tierFromPercentile(hazResult.percentile);
+    : tierFromPercentile(percentile);
 
   return {
     tier,
-    score: hazResult.score,
-    percentile: hazResult.percentile,
+    percentile,
+    hazardScore:   dayScore.hazard.score,
+    exposureScore: dayScore.exposure.score,
+    combinedScore: dayScore.combined,
     coverage,
-    components,
+    components: dayScore.hazard.components,
     waveDataAvailable: coverage.waves,
+    coverageStart,
   };
 }
