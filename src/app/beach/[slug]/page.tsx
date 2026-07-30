@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getBeachBySlug, getIncidentsByBeach, getRecentObservations, getAllFingerprints } from "@/db/queries";
+import { getBeachBySlug, getIncidentsByBeach, getRecentObservations, getAllFingerprints, getClimatology, getAnnualClimatology } from "@/db/queries";
 import { AlertBadge } from "@/components/alert-badge";
 import { ConditionsChart } from "@/components/conditions-chart";
 import { RiskEvidencePanel } from "@/components/risk-evidence-panel";
@@ -9,7 +9,6 @@ import type { ForecastDay, TideEvent, EbbWindow } from "@/lib/forecast";
 import { getHistoricalHazard } from "@/lib/historical-hazard";
 import { buildClimMap } from "@/lib/calibration";
 import type { Tier } from "@/lib/calibration";
-import { getClimatology } from "@/db/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -132,20 +131,25 @@ export default async function BeachPage({ params }: { params: Promise<{ slug: st
   const uniqueMonths = [...new Set(incidentTyped.map((inc) =>
     parseInt((inc.date instanceof Date ? inc.date.toISOString() : String(inc.date)).slice(5, 7), 10)
   ))];
-  const climCache = new Map(
-    await Promise.all(uniqueMonths.map(async (month) => {
+  const [climCacheEntries, annualRows] = await Promise.all([
+    Promise.all(uniqueMonths.map(async (month) => {
       const rows = await getClimatology(beach.id, month) as Array<{
         metric: string; n: number; coverage_start: unknown; coverage_end: unknown; ladder: unknown;
       }>;
       return [month, buildClimMap(rows, month)] as const;
-    }))
-  );
+    })),
+    getAnnualClimatology(beach.id) as Promise<Array<{
+      metric: string; n: number; coverage_start: unknown; coverage_end: unknown; ladder: unknown;
+    }>>,
+  ]);
+  const climCache = new Map(climCacheEntries);
+  const annualClim = buildClimMap(annualRows, 0);
 
   const retroTierEntries = await Promise.all(
     incidentTyped.map(async (inc) => {
       const d = (inc.date instanceof Date ? inc.date.toISOString() : String(inc.date)).slice(0, 10);
       try {
-        const r = await getHistoricalHazard({ id: beach.id, slug: beach.slug }, d, climCache);
+        const r = await getHistoricalHazard({ id: beach.id, slug: beach.slug }, d, climCache, annualClim);
         return [inc.id, r?.tier ?? null] as const;
       } catch {
         return [inc.id, null] as const;
