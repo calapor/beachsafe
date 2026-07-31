@@ -64,9 +64,9 @@ pnpm dev
 2. **Exposure score** — beach-crowd proxy: temp, wind, month, weekday/weekend, bank holiday.
 3. **Combined score** — `0.65 × exposure + 0.35 × hazard` (weight chosen by out-of-fold lift sweep).
 4. **Tier** — rank-calibrated against all days at the beach (annual ladder, `month=0`):
-   - **Severe** ≥ 98th percentile
-   - **Warning** ≥ 90th percentile
-   - **Watch** ≥ 70th percentile
+   - **Severe** ≥ 95th percentile (top 5%)
+   - **Warning** ≥ 80th percentile (top 20%)
+   - **Watch** ≥ 70th percentile (top 30%)
    - **Low** below that
 
 Backtest (5-year blocks, out-of-fold): AUC 0.645–0.797 across three beaches; 39/51 scoped incidents rank at Watch or above. Run `npx tsx --env-file .env.local scripts/analysis/backtest.ts` to verify.
