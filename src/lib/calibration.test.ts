@@ -81,23 +81,28 @@ describe("tierFromPercentile", () => {
     expect(tierFromPercentile(null)).toBe("unknown");
   });
 
-  it("≥0.98 → severe", () => {
-    expect(tierFromPercentile(0.98)).toBe("severe");
+  it("≥0.95 → severe", () => {
+    expect(tierFromPercentile(0.95)).toBe("severe");
     expect(tierFromPercentile(1.0)).toBe("severe");
   });
 
-  it("≥0.90 and <0.98 → warning", () => {
-    expect(tierFromPercentile(0.90)).toBe("warning");
-    expect(tierFromPercentile(0.97)).toBe("warning");
+  it("≥0.80 and <0.95 → warning", () => {
+    expect(tierFromPercentile(0.80)).toBe("warning");
+    expect(tierFromPercentile(0.94)).toBe("warning");
   });
 
-  it("≥0.75 and <0.90 → watch", () => {
-    expect(tierFromPercentile(0.75)).toBe("watch");
-    expect(tierFromPercentile(0.89)).toBe("watch");
+  it("≥0.70 and <0.80 → watch", () => {
+    expect(tierFromPercentile(0.70)).toBe("watch");
+    expect(tierFromPercentile(0.79)).toBe("watch");
   });
 
-  it("<0.75 → low", () => {
-    expect(tierFromPercentile(0.74)).toBe("low");
+  it("≥0.68 and <0.70 → borderline", () => {
+    expect(tierFromPercentile(0.68)).toBe("borderline");
+    expect(tierFromPercentile(0.69)).toBe("borderline");
+  });
+
+  it("<0.68 → low", () => {
+    expect(tierFromPercentile(0.67)).toBe("low");
     expect(tierFromPercentile(0.0)).toBe("low");
   });
 });
