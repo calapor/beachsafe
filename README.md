@@ -3,6 +3,7 @@
 </p>
 
 [![CI](https://github.com/calapor/beachsafe/actions/workflows/ci.yml/badge.svg)](https://github.com/calapor/beachsafe/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/github/checks-status/calapor/beachsafe/main?check=Vitest&label=tests&logo=vitest)](https://github.com/calapor/beachsafe/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Coastal risk alerting for three Irish beaches — **Fountainstown** (Cork), **Ballybunion** (Kerry), and **Skerries** (Dublin).
