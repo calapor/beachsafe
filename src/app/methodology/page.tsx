@@ -58,7 +58,7 @@ export default async function MethodologyPage() {
         <Section title="Calibration targets">
           <p>
             Tiers are calibrated against the distribution of historical conditions for each beach and
-            calendar month, so &ldquo;Severe&rdquo; always means approximately the worst 2% of days for this
+            calendar month, so &ldquo;Severe&rdquo; always means approximately the worst 5% of days for this
             time of year — not a fixed absolute threshold:
           </p>
           <table className="w-full text-xs border-collapse mt-2">
@@ -71,11 +71,12 @@ export default async function MethodologyPage() {
             </thead>
             <tbody>
               {[
-                ["Severe",  "~2%",  "Worst 2% of days for this beach and month"],
-                ["Warning", "~8%",  "Top 10% of days by hazard index"],
-                ["Watch",   "~15%", "Top 25% — conditions worth noting"],
-                ["Low",     "~75%", "Typical conditions for this time of year"],
-                ["Unknown", "—",    "Forecast data unavailable"],
+                ["Severe",     "~5%",  "Worst 5% of days for this beach and month"],
+                ["Warning",    "~15%", "Top 20% of days — elevated hazard or crowding"],
+                ["Watch",      "~10%", "Top 30% — conditions worth noting"],
+                ["Borderline", "~2%",  "68th–70th percentile — just below Watch"],
+                ["Low",        "~68%", "Typical conditions for this time of year"],
+                ["Unknown",    "—",    "Forecast data unavailable"],
               ].map(([tier, freq, meaning]) => (
                 <tr key={tier}>
                   <td className="p-2 border border-gray-200 font-medium">{tier}</td>
