@@ -83,16 +83,18 @@ describe("ladder round-trip", () => {
 
     // Count how many of the original scores fall into each tier
     const tiers = samples.map((s) => tierFromPercentile(percentileOf(s, table)));
-    const severe  = tiers.filter((t) => t === "severe").length;
-    const warning = tiers.filter((t) => t === "warning").length;
-    const watch   = tiers.filter((t) => t === "watch").length;
-    const low     = tiers.filter((t) => t === "low").length;
+    const severe     = tiers.filter((t) => t === "severe").length;
+    const warning    = tiers.filter((t) => t === "warning").length;
+    const watch      = tiers.filter((t) => t === "watch").length;
+    const borderline = tiers.filter((t) => t === "borderline").length;
+    const low        = tiers.filter((t) => t === "low").length;
 
-    // Tier thresholds: severe ≥0.98, warning ≥0.90, watch ≥0.75
-    // With a uniform distribution: severe=2%, warning=8%, watch=15%, low=75%
-    expect(severe  / 1000).toBeCloseTo(0.02, 1);
-    expect(warning / 1000).toBeCloseTo(0.08, 1);
-    expect(watch   / 1000).toBeCloseTo(0.15, 1);
-    expect(low     / 1000).toBeCloseTo(0.75, 1);
+    // Tier thresholds: severe ≥0.95, warning ≥0.80, watch ≥0.70, borderline ≥0.68
+    // With a uniform distribution: severe=5%, warning=15%, watch=10%, borderline=2%, low=68%
+    expect(severe     / 1000).toBeCloseTo(0.05, 1);
+    expect(warning    / 1000).toBeCloseTo(0.15, 1);
+    expect(watch      / 1000).toBeCloseTo(0.10, 1);
+    expect(borderline / 1000).toBeCloseTo(0.02, 1);
+    expect(low        / 1000).toBeCloseTo(0.68, 1);
   });
 });
