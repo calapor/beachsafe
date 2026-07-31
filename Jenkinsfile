@@ -51,8 +51,10 @@ spec:
   }
 
   environment {
-    // Set REGISTRY to your container registry host (e.g. ghcr.io/your-org or your-registry.example.com:5000)
-    REGISTRY = 'your.registry.example.com:5000'
+    // BEACHSAFE_REGISTRY must be set in Jenkins → Manage Jenkins → Configure System
+    // → Global properties → Environment variables (e.g. 192.168.1.101:5000 or ghcr.io/your-org)
+    // It is intentionally not stored in source control.
+    REGISTRY = "${env.BEACHSAFE_REGISTRY}"
     APP_NAME = 'beachsafe'
     NAMESPACE = 'beachsafe'
   }
