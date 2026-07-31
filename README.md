@@ -104,7 +104,7 @@ helm upgrade --install beachsafe deploy/helm/beachsafe \
 ```
 
 A `Jenkinsfile` is included for teams running Jenkins on Kubernetes. Before using it, configure the following in **Manage Jenkins → Configure System → Global properties → Environment variables**:
-- `BEACHSAFE_REGISTRY` — your container registry host (e.g. `192.168.1.101:5000` or `ghcr.io/your-org`)
+- `REGISTRY` — your container registry host (e.g. `192.168.1.101:5000` or `ghcr.io/your-org`)
 
 And add two credentials in **Manage Jenkins → Credentials**:
 - `database-url` — Neon Postgres connection string
