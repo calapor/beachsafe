@@ -11,7 +11,7 @@ export interface PercentileTable {
   ladder: number[];
 }
 
-export type Tier = "low" | "watch" | "warning" | "severe" | "unknown";
+export type Tier = "low" | "borderline" | "watch" | "warning" | "severe" | "unknown";
 
 const MIN_SAMPLES = 100;
 
@@ -58,7 +58,7 @@ export function percentileOf(value: number | null, t: PercentileTable | null): n
 }
 
 /**
- * Tier thresholds: severe = top 5%, warning = top 20%, watch = top 30%.
+ * Tier thresholds: severe = top 5%, warning = top 20%, watch = top 30%, borderline = 68–70th percentile.
  * A null percentile (missing data) returns "unknown".
  */
 export function tierFromPercentile(p: number | null): Tier {
@@ -66,6 +66,7 @@ export function tierFromPercentile(p: number | null): Tier {
   if (p >= 0.95) return "severe";
   if (p >= 0.80) return "warning";
   if (p >= 0.70) return "watch";
+  if (p >= 0.68) return "borderline";
   return "low";
 }
 

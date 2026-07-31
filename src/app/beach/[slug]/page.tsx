@@ -229,7 +229,7 @@ export default async function BeachPage({ params }: { params: Promise<{ slug: st
             components={today.hazardComponents}
             coverage={today.coverage}
             topMatches={today.topMatches}
-            isCalm={today.tier === "low" || today.tier === "unknown"}
+            isCalm={today.tier === "low" || today.tier === "borderline" || today.tier === "unknown"}
             exposureScore={today.exposureScore}
             exposureDrivers={today.exposureDrivers}
             hazardScore={today.hazardScore}
@@ -272,7 +272,7 @@ export default async function BeachPage({ params }: { params: Promise<{ slug: st
                   severe:  "bg-red-100 text-red-800",
                 };
                 const pillStyle = retroTier ? TIER_PILL[retroTier] : null;
-                const pillLabel = retroTier === "low" ? "Low" : retroTier === "watch" ? "Watch" : retroTier === "warning" ? "Warning" : retroTier === "severe" ? "Severe" : null;
+                const pillLabel = retroTier === "low" ? "Low" : retroTier === "borderline" ? "Borderline" : retroTier === "watch" ? "Watch" : retroTier === "warning" ? "Warning" : retroTier === "severe" ? "Severe" : null;
                 return (
                   <Link
                     key={inc.id}

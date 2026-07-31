@@ -1,6 +1,6 @@
 "use client";
 
-export type Level = "none" | "low" | "watch" | "warning" | "severe" | "unknown";
+export type Level = "none" | "low" | "borderline" | "watch" | "warning" | "severe" | "unknown";
 
 const LOW_CFG = { label: "Low", bg: "bg-emerald-100", text: "text-emerald-800", dot: "bg-emerald-500" };
 
@@ -8,6 +8,7 @@ const CONFIG: Record<Level, { label: string; bg: string; text: string; dot: stri
   unknown: { label: "Insufficient data",     bg: "bg-gray-100",    text: "text-gray-500",    dot: "bg-gray-400" },
   none:    LOW_CFG,
   low:     LOW_CFG,
+  borderline: { label: "Borderline",          bg: "bg-lime-100",    text: "text-lime-800",    dot: "bg-lime-500" },
   watch:   { label: "Watch",                 bg: "bg-yellow-100",  text: "text-yellow-800",  dot: "bg-yellow-500" },
   warning: { label: "Warning",               bg: "bg-orange-100",  text: "text-orange-800",  dot: "bg-orange-500" },
   severe:  { label: "Severe",                bg: "bg-red-100",     text: "text-red-800",     dot: "bg-red-500" },
@@ -16,10 +17,11 @@ const CONFIG: Record<Level, { label: string; bg: string; text: string; dot: stri
 // Frequency descriptions calibrated to annual combined-score ladder.
 // severe ≈ worst 2%, warning ≈ next 8%, watch ≈ next 15%.
 const FREQ_LABEL: Partial<Record<Level, string>> = {
-  low:     "typical conditions",
-  watch:   "top 25% of days here",
-  warning: "top 10% of days here",
-  severe:  "worst ~2% of days here",
+  low:        "typical conditions",
+  borderline: "68–70th percentile",
+  watch:      "top 30% of days here",
+  warning: "top 20% of days here",
+  severe:  "worst 5% of days here",
   unknown: "data unavailable",
 };
 
