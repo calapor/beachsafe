@@ -107,7 +107,7 @@ A `Jenkinsfile` is included for teams running Jenkins on Kubernetes. Before usin
 - `REGISTRY` — your container registry host (e.g. `192.168.1.101:5000` or `ghcr.io/your-org`)
 
 And add two credentials in **Manage Jenkins → Credentials**:
-- `database-url` — Neon Postgres connection string
+- `flags-database-url` — Neon Postgres connection string
 - `anthropic-api-key` — Anthropic API key (used by the ETL enrichment pass only)
 
 ## Data sources
