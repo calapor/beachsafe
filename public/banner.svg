@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="200" viewBox="0 0 1200 200">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1e3a8a"/>
+      <stop offset="100%" stop-color="#1d4ed8"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="200" fill="url(#bg)" rx="12"/>
+  <text x="72" y="112" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="54" font-weight="700" fill="white" letter-spacing="-0.5">🌊 BeachSafe Ireland</text>
+  <text x="72" y="158" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="22" fill="#bfdbfe">Coastal condition-matching &amp; incident alerting for Irish beaches</text>
+</svg>
