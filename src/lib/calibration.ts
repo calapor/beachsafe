@@ -58,13 +58,13 @@ export function percentileOf(value: number | null, t: PercentileTable | null): n
 }
 
 /**
- * Tier thresholds calibrated so that severe ≈ 2%, warning ≈ 8%, watch ≈ 20% of days.
+ * Tier thresholds: severe = top 5%, warning = top 20%, watch = top 30%.
  * A null percentile (missing data) returns "unknown".
  */
 export function tierFromPercentile(p: number | null): Tier {
   if (p == null) return "unknown";
-  if (p >= 0.98) return "severe";
-  if (p >= 0.90) return "warning";
+  if (p >= 0.95) return "severe";
+  if (p >= 0.80) return "warning";
   if (p >= 0.70) return "watch";
   return "low";
 }
