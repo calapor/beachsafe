@@ -23,6 +23,12 @@ import type { Level } from "@/components/alert-badge";
 
 export const dynamic = "force-dynamic";
 
+function ordinal(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
 const BEACH_BEARING: Record<string, number> = {
   fountainstown: 135,
   ballybunion:   270,
@@ -62,7 +68,7 @@ function RetroHazardCard({ result, beachName, date }: {
           </div>
           {result.percentile != null && (
             <p className="text-xs text-gray-400">
-              Ranked in the {(result.percentile * 100).toFixed(0)}th percentile of all days at {beachName}
+              Ranked in the {ordinal(Math.round(result.percentile * 100))} percentile of all days at {beachName}
               {result.coverageStart ? ` since ${result.coverageStart.slice(0, 4)}` : ""}.
             </p>
           )}

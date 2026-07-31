@@ -66,7 +66,7 @@ pnpm dev
 4. **Tier** — rank-calibrated against all days at the beach (annual ladder, `month=0`):
    - **Severe** ≥ 98th percentile
    - **Warning** ≥ 90th percentile
-   - **Watch** ≥ 75th percentile
+   - **Watch** ≥ 70th percentile
    - **Low** below that
 
 Backtest (5-year blocks, out-of-fold): AUC 0.645–0.797 across three beaches; 39/51 scoped incidents rank at Watch or above. Run `npx tsx --env-file .env.local scripts/analysis/backtest.ts` to verify.

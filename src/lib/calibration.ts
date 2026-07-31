@@ -58,14 +58,14 @@ export function percentileOf(value: number | null, t: PercentileTable | null): n
 }
 
 /**
- * Tier thresholds calibrated so that severe ≈ 2%, warning ≈ 8%, watch ≈ 15% of days.
+ * Tier thresholds calibrated so that severe ≈ 2%, warning ≈ 8%, watch ≈ 20% of days.
  * A null percentile (missing data) returns "unknown".
  */
 export function tierFromPercentile(p: number | null): Tier {
   if (p == null) return "unknown";
   if (p >= 0.98) return "severe";
   if (p >= 0.90) return "warning";
-  if (p >= 0.75) return "watch";
+  if (p >= 0.70) return "watch";
   return "low";
 }
 
@@ -81,8 +81,8 @@ export function buildClimMap(
       metric: row.metric,
       month,
       n: row.n,
-      coverageStart: String(row.coverage_start ?? ""),
-      coverageEnd:   String(row.coverage_end ?? ""),
+      coverageStart: row.coverage_start instanceof Date ? row.coverage_start.toISOString().slice(0, 10) : String(row.coverage_start ?? ""),
+      coverageEnd:   row.coverage_end   instanceof Date ? row.coverage_end.toISOString().slice(0, 10)   : String(row.coverage_end   ?? ""),
       ladder,
     };
   }
