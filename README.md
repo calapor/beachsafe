@@ -1,7 +1,10 @@
-# BeachSafe Ireland 🌊
+<p align="center">
+  <img src="public/banner.svg" alt="BeachSafe Ireland — Coastal condition-matching &amp; incident alerting for Irish beaches" width="100%" />
+</p>
 
 [![CI](https://github.com/calapor/beachsafe/actions/workflows/ci.yml/badge.svg)](https://github.com/calapor/beachsafe/actions/workflows/ci.yml)
 [![Tests](https://img.shields.io/github/checks-status/calapor/beachsafe/main?check=Vitest&label=tests&logo=vitest)](https://github.com/calapor/beachsafe/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Coastal risk alerting for three Irish beaches — **Fountainstown** (Cork), **Ballybunion** (Kerry), and **Skerries** (Dublin).
 
@@ -121,3 +124,7 @@ And add two credentials in **Manage Jenkins → Credentials**:
 ## Methodology
 
 See `/methodology` in the running app, or `src/app/methodology/page.tsx`, for detailed notes on coverage gaps, feature validation (ROC AUC, lift), and the deliberate null result for the similarity-matching approach.
+
+## License
+
+MIT © 2025 Richard O'Connor
