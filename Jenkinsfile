@@ -107,8 +107,8 @@ spec:
       }
       steps {
         container('node') {
-          // Credential ID 'database-url' must exist in Jenkins credential store
-          withCredentials([string(credentialsId: 'database-url', variable: 'DATABASE_URL')]) {
+          // Credential ID 'flags-database-url' must exist in Jenkins credential store
+          withCredentials([string(credentialsId: 'flags-database-url', variable: 'DATABASE_URL')]) {
             sh 'DATABASE_URL="${DATABASE_URL}" pnpm exec tsx scripts/migrate.ts'
             sh 'DATABASE_URL="${DATABASE_URL}" pnpm exec tsx scripts/etl/run-all.ts --skip-weather --skip-waves --skip-tides --skip-rnli --skip-enrich'
           }
@@ -138,8 +138,8 @@ spec:
       steps {
         container('helm') {
           withCredentials([
-            // Credential IDs 'database-url' and 'anthropic-api-key' must exist in Jenkins credential store
-            string(credentialsId: 'database-url',    variable: 'DATABASE_URL'),
+            // Credential IDs 'flags-database-url' and 'anthropic-api-key' must exist in Jenkins credential store
+            string(credentialsId: 'flags-database-url',    variable: 'DATABASE_URL'),
             string(credentialsId: 'anthropic-api-key', variable: 'ANTHROPIC_KEY'),
           ]) {
             sh """
