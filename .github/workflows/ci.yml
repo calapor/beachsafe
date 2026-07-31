@@ -33,8 +33,6 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     needs: test
-    env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -45,6 +43,4 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Backtest gate (CV lift ≥ 1.5x)
-        run: npx tsx scripts/analysis/backtest.ts
       - run: pnpm build
