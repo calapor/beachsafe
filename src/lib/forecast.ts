@@ -44,7 +44,7 @@ export interface ForecastDay {
   // Calibrated tier from annual combined_score rank
   tier: Tier;
   // Keep for backward compat — same as tier
-  alertLevel: "none" | "watch" | "warning" | "severe";
+  alertLevel: "none" | "borderline" | "watch" | "warning" | "severe";
   // Hazard breakdown
   hazardScore: number | null;
   hazardComponents: Component[];
@@ -485,7 +485,7 @@ export async function getForecastDays(
     // Map to legacy alert level for backward compat
     const alertLevel = tier === "unknown" ? "none"
       : tier === "low" ? "none"
-      : tier as "watch" | "warning" | "severe";
+      : tier as "borderline" | "watch" | "warning" | "severe";
 
     // Precedent lookup — demoted to informational, no longer drives tier
     const matches = fps.length ? matchAll(day.features, fps) : [];

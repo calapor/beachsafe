@@ -67,7 +67,8 @@ pnpm dev
    - **Severe** ≥ 95th percentile (top 5%)
    - **Warning** ≥ 80th percentile (top 20%)
    - **Watch** ≥ 70th percentile (top 30%)
-   - **Low** below that
+   - **Borderline** 68th–70th percentile
+   - **Low** below 68th percentile
 
 Backtest (5-year blocks, out-of-fold): AUC 0.645–0.797 across three beaches; 39/51 scoped incidents rank at Watch or above. Run `npx tsx --env-file .env.local scripts/analysis/backtest.ts` to verify.
 
