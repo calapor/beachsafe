@@ -13,7 +13,7 @@ Coastal risk alerting for three Irish beaches — **Fountainstown** (Cork), **Ba
 > **Pattern match, not a forecast.** Alert levels reflect how unusual a day's conditions are relative to the beach's own history — not incident probability. Always follow lifeguard and coast guard advice.
 
 > ### 📚 [Portfolio Documentation →](docs/portfolio/README.md)
-> Engineering documentation written for technical interviews and portfolio review: product brief, system architecture, data model, prompt-engineering lifecycle, evaluation framework, and a decision log.
+> Product brief, system architecture, data model, prompt-engineering lifecycle, evaluation framework, and a decision log.
 
 ## Features
 
