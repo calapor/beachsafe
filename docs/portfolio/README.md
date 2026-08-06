@@ -21,10 +21,10 @@ BeachSafe is a coastal risk-alerting application for three Irish beaches (Founta
 
 ## Reading paths
 
-**Recruiter (5 min):** [0 — Product Design Brief](0-product-design-brief.md)
+**Quick overview (5 min):** [0 — Product Design Brief](0-product-design-brief.md)
 
-**Hiring Manager (15 min):** [0 — Product Brief](0-product-design-brief.md) → [2 — System Architecture](2-system-architecture.md) → [9 — Decision Log](9-engineering-decision-log.md)
+**Product and delivery focus (15 min):** [0 — Product Brief](0-product-design-brief.md) → [2 — System Architecture](2-system-architecture.md) → [9 — Decision Log](9-engineering-decision-log.md)
 
-**Technical Interview (30 min):** [2 — Architecture](2-system-architecture.md) → [3 — Data Model](3-data-model-reference.md) → [7 — Scoring Architecture](7-scoring-architecture.md) → [5 — Evaluation Framework](5-evaluation-framework.md)
+**Full technical depth (30 min):** [2 — Architecture](2-system-architecture.md) → [3 — Data Model](3-data-model-reference.md) → [7 — Scoring Architecture](7-scoring-architecture.md) → [5 — Evaluation Framework](5-evaluation-framework.md)
 
-**AI-Focused Interviewer (30 min):** [4 — Prompt Engineering Lifecycle](4-prompt-engineering-lifecycle.md) → [6 — AI Safety & Considerations](6-ai-safety-and-considerations.md) → [5 — Evaluation Framework](5-evaluation-framework.md) → [8 — Observability & Data Coverage](8-observability-and-data-coverage.md)
+**AI engineering focus (30 min):** [4 — Prompt Engineering Lifecycle](4-prompt-engineering-lifecycle.md) → [6 — AI Safety & Considerations](6-ai-safety-and-considerations.md) → [5 — Evaluation Framework](5-evaluation-framework.md) → [8 — Observability & Data Coverage](8-observability-and-data-coverage.md)
