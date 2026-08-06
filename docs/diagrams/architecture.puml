@@ -1,0 +1,111 @@
+@startuml architecture
+' BeachSafe — end-to-end architecture: ETL -> DB -> API -> UI
+skinparam componentStyle rectangle
+skinparam defaultFontName Helvetica
+skinparam shadowing false
+skinparam rectangle {
+  BorderColor #1e3a8a
+  BackgroundColor #eff6ff
+}
+skinparam database {
+  BorderColor #065f46
+  BackgroundColor #ecfdf5
+}
+skinparam cloud {
+  BorderColor #7c2d12
+  BackgroundColor #fff7ed
+}
+
+title BeachSafe — Data Pipeline (offline ETL) and Serving Path (request time)
+
+cloud "External open data" as EXT {
+  [Open-Meteo ERA5 archive\n(historical weather)] as OM_ERA5
+  [Open-Meteo marine archive\n(waves / swell / SST)] as OM_MARINE
+  [Marine Institute ERDDAP\n(tide gauge, buoy SST,\ntide predictions)] as ERDDAP
+  [RNLI Return of Service\n(ArcGIS FeatureServer)] as RNLI
+  [Met Eireann locationforecast\n(XML, forecast wind)] as METEIREANN
+  [SunCalc\n(computed, no network)] as SUNCALC
+}
+
+package "ETL — scripts/ (tsx, run offline via `pnpm etl`)" as ETL {
+  [migrate.ts] as MIGRATE
+  [ingest-weather.ts] as ING_W
+  [ingest-waves.ts] as ING_WAVE
+  [ingest-tides.ts] as ING_TIDE
+  [ingest-rnli.ts] as ING_RNLI
+  [compute-astro.ts] as ASTRO
+  [seed-incidents.ts] as SEED
+  [enrich-incidents.ts\n(Claude Haiku)] as ENRICH
+  [build-fingerprints.ts] as FP
+  [build-climatology.ts] as CLIM
+}
+
+cloud "Anthropic API" as ANTHROPIC {
+  [claude-haiku-4-5] as HAIKU
+}
+
+database "Neon Postgres" as DB {
+  [beaches]
+  [observations]
+  [incidents]
+  [incident_fingerprints]
+  [climatology]
+  [feature_discrimination]
+}
+
+package "Next.js app — src/" as APP {
+  [lib/risk.ts scoreDay()\n= 0.65*exposure + 0.35*hazard] as RISK
+  [lib/forecast.ts\ngetForecastDays()] as FORECAST
+  [lib/historical-hazard.ts] as HIST
+  [db/queries.ts] as QUERIES
+  [/api/alerts route] as APIROUTE
+  [Dashboard / beach / incident\n/ methodology pages] as PAGES
+}
+
+package "Analysis — scripts/analysis/ (offline)" as ANALYSIS {
+  [backtest.ts\n(out-of-fold CV, lift gate)] as BACKTEST
+  [discrimination.ts\n(case-control AUC)] as DISCRIM
+  [tier-frequency.ts] as TIERFREQ
+}
+
+' ETL data flow
+OM_ERA5 --> ING_W
+OM_MARINE --> ING_WAVE
+ERDDAP --> ING_TIDE
+ERDDAP --> ING_WAVE : buoy SST fallback
+RNLI --> ING_RNLI
+SUNCALC --> ASTRO
+SUNCALC --> FP : daylight window
+
+ING_W --> observations
+ING_WAVE --> observations
+ING_TIDE --> observations
+ASTRO --> observations
+ING_RNLI --> incidents
+SEED --> incidents
+ENRICH --> HAIKU
+HAIKU --> ENRICH
+ENRICH --> incidents : time / activity /\ncondition_related
+FP --> incident_fingerprints
+CLIM --> climatology
+DISCRIM --> feature_discrimination
+
+' Serving path
+APIROUTE --> QUERIES
+PAGES --> QUERIES
+FORECAST --> METEIREANN
+FORECAST --> OM_MARINE
+FORECAST --> ERDDAP : tide predictions
+FORECAST --> RISK
+HIST --> RISK
+RISK --> CLIM : (shares scoreDay with ETL)
+QUERIES --> DB
+FORECAST --> QUERIES
+
+' Analysis reads DB, reuses scoreDay
+BACKTEST --> RISK
+BACKTEST --> DB
+TIERFREQ --> DB
+DISCRIM --> DB
+
+@enduml
