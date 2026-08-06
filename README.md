@@ -198,6 +198,10 @@ And add two credentials in **Manage Jenkins → Credentials**:
 - `flags-database-url` — Neon Postgres connection string
 - `anthropic-api-key` — Anthropic API key (used by the ETL enrichment pass only)
 
+### Monitoring
+
+The deployed service is monitored by **Uptime Kuma**, which runs in the `platform` namespace on the same k3s cluster. Uptime Kuma watches the BeachSafe service endpoint and alerts when thresholds are breached (endpoint down or response time exceeded). The dashboard is at `http://192.168.1.101:30001`. Monitor configuration is managed through the Uptime Kuma web UI and is not stored in this repo.
+
 ## Data Sources
 
 - **Historical weather** — Open-Meteo ERA5 reanalysis archive (`archive-api.open-meteo.com`), daily from 1950

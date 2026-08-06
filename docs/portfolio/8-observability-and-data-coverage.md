@@ -49,3 +49,7 @@ Documented on the `/methodology` page and reflected throughout the analysis code
 - `/api/health` provides a liveness probe.
 - ETL scripts are verbose and incremental: `ingest-weather.ts` logs its fetch window and re-fetches the last 7 days each run; ingest scripts log per-chunk progress and honour rate-limit `Retry-After`.
 - The backtest and tier-frequency scripts are **gated**: they exit non-zero when the model regresses below acceptance bars (lift@25% ≥ 1.5×; tier frequencies within target bands), making model quality a checkable signal rather than a subjective judgement.
+
+## Uptime Monitoring
+
+Beyond the in-app coverage and health signals above, production uptime is watched by **Uptime Kuma**, which runs in the shared `platform` namespace on the same k3s cluster. It polls the deployed BeachSafe service endpoint and alerts the operator when thresholds are breached (endpoint down or response time exceeded), complementing the app's own `/api/health` liveness probe. The Uptime Kuma dashboard is at `http://192.168.1.101:30001`; monitor configuration lives in Uptime Kuma's own database and is managed via its web UI rather than in this repo.
