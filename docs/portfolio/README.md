@@ -1,6 +1,6 @@
 # BeachSafe — Portfolio Documentation
 
-> Engineering documentation for technical interviews and portfolio review.
+> Engineering documentation for this project.
 
 BeachSafe is a coastal risk-alerting application for three Irish beaches (Fountainstown, Ballybunion, Skerries). It ingests decades of open environmental data and a curated record of coastal incidents, scores each day against a rank-calibrated hazard + exposure model, and presents tiered alerts plus a retrospective incident explorer. These documents explain how it was designed, built, evaluated, and where its limits lie.
 
