@@ -32,6 +32,15 @@ spec:
     tty: true
     securityContext:
       privileged: true
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "500m"
+        ephemeral-storage: "2Gi"
+      limits:
+        memory: "1Gi"
+        cpu: "1000m"
+        ephemeral-storage: "8Gi"
     volumeMounts:
     - name: varlibcontainers
       mountPath: /var/lib/containers
@@ -39,7 +48,8 @@ spec:
     image: jenkins/inbound-agent:latest
   volumes:
   - name: varlibcontainers
-    emptyDir: {}
+    emptyDir:
+      sizeLimit: 8Gi
 """
     }
   }
@@ -129,6 +139,7 @@ spec:
             buildah push --tls-verify=false ${REGISTRY}/${APP_NAME}:${IMAGE_TAG}
             buildah push --tls-verify=false ${REGISTRY}/${APP_NAME}:main
             buildah rmi ${REGISTRY}/${APP_NAME}:${IMAGE_TAG} || true
+            buildah rmi ${REGISTRY}/${APP_NAME}:main || true
           """
         }
       }
@@ -165,6 +176,12 @@ spec:
   post {
     always {
       echo "Build #${currentBuild.number} — ${currentBuild.currentResult}"
+      container('buildah') {
+        sh '''
+          buildah rm -a || true
+          buildah rmi -a -f || true
+        '''
+      }
     }
   }
 }
