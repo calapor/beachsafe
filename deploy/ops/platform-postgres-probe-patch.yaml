@@ -1,0 +1,39 @@
+# Patch for platform-postgres-0 liveness/readiness instability.
+#
+# Root cause: checkpoint I/O on Raspberry Pi local-path storage takes ~269 s,
+# causing pg_isready to miss the 1-second timeout and kubelet to kill a
+# healthy pod (exit 137, OOMKilled-looking but actually SIGKILL from kubelet).
+#
+# Apply to statefulset platform-postgres in namespace platform:
+#   kubectl patch statefulset platform-postgres -n platform --patch-file deploy/ops/platform-postgres-probe-patch.yaml
+#
+# Or port to whichever repo owns the platform-postgres manifest.
+spec:
+  template:
+    spec:
+      containers:
+        - name: postgres
+          resources:
+            limits:
+              memory: "1Gi"    # was 512Mi; rpi1 is at 64% headroom exists
+          startupProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 30   # 300 s of grace — covers WAL recovery after crash
+            timeoutSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 10     # was 1 — pg_isready needs headroom during checkpoints
+            failureThreshold: 6    # was 3 — two minutes of consecutive misses before kill
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 10     # was 1
+            failureThreshold: 3
