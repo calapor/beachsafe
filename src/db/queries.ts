@@ -1,7 +1,10 @@
-import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 
-function db() {
-  return neon(process.env.DATABASE_URL!);
+const _sql = postgres(process.env.DATABASE_URL!);
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function db(): any {
+  return _sql;
 }
 
 export async function getBeaches() {
@@ -95,10 +98,10 @@ export async function upsertObservation(beachId: number, date: string, data: Rec
 
   const setClauses = keys.map((k) => `${k} = EXCLUDED.${k}`).join(", ");
 
-  await sql.query(
+  await sql.unsafe(
     `INSERT INTO observations (${cols.join(", ")}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(", ")})
      ON CONFLICT (beach_id, date) DO UPDATE SET ${setClauses}`,
-    vals
+    vals as Parameters<typeof sql.unsafe>[1]
   );
 }
 

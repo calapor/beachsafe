@@ -129,7 +129,7 @@ export default async function BeachPage({ params }: { params: Promise<{ slug: st
 
   // Pre-fetch all unique months' climatology upfront (max 12 calls), then score incidents in parallel.
   const uniqueMonths = [...new Set(incidentTyped.map((inc) =>
-    parseInt((inc.date instanceof Date ? inc.date.toISOString() : String(inc.date)).slice(5, 7), 10)
+    parseInt(((inc.date as unknown) instanceof Date ? (inc.date as unknown as Date).toISOString() : String(inc.date)).slice(5, 7), 10)
   ))];
   const [climCacheEntries, annualRows] = await Promise.all([
     Promise.all(uniqueMonths.map(async (month) => {
@@ -147,7 +147,7 @@ export default async function BeachPage({ params }: { params: Promise<{ slug: st
 
   const retroTierEntries = await Promise.all(
     incidentTyped.map(async (inc) => {
-      const d = (inc.date instanceof Date ? inc.date.toISOString() : String(inc.date)).slice(0, 10);
+      const d = ((inc.date as unknown) instanceof Date ? (inc.date as unknown as Date).toISOString() : String(inc.date)).slice(0, 10);
       try {
         const r = await getHistoricalHazard({ id: beach.id, slug: beach.slug }, d, climCache, annualClim);
         return [inc.id, r?.tier ?? null] as const;
@@ -178,7 +178,7 @@ export default async function BeachPage({ params }: { params: Promise<{ slug: st
     .slice()
     .reverse()
     .map((r) => ({
-      date: (r.date instanceof Date ? r.date.toISOString() : String(r.date)).slice(0, 10),
+      date: ((r.date as unknown) instanceof Date ? (r.date as unknown as Date).toISOString() : String(r.date)).slice(0, 10),
       wind: r.mean_wind_knots ?? null,
       wave: r.wave_height_m ?? null,
       rain: r.rain_mm ?? null,
@@ -281,7 +281,7 @@ export default async function BeachPage({ params }: { params: Promise<{ slug: st
                   >
                     <div className="flex-shrink-0 w-16 text-center">
                       <p className="text-xs font-mono text-gray-400">
-                        {(inc.date instanceof Date ? inc.date.toISOString() : String(inc.date)).slice(0, 10)}
+                        {((inc.date as unknown) instanceof Date ? (inc.date as unknown as Date).toISOString() : String(inc.date)).slice(0, 10)}
                       </p>
                     </div>
                     <div className="flex-1 min-w-0">

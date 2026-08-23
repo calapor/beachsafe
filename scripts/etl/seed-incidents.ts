@@ -1,8 +1,8 @@
-import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 
-const sql = neon(process.env.DATABASE_URL!);
+const sql = postgres(process.env.DATABASE_URL!);
 
 interface IncidentRecord {
   date: string;
@@ -24,7 +24,7 @@ interface IncidentRecord {
 
 async function main() {
   const beaches = await sql`SELECT id, slug FROM beaches`;
-  for (const beach of beaches as Array<{ id: number; slug: string }>) {
+  for (const beach of beaches as unknown as Array<{ id: number; slug: string }>) {
     const filePath = resolve(__dirname, `../../data/incidents.${beach.slug}.json`);
     let incidents: IncidentRecord[];
     try {
@@ -55,4 +55,6 @@ async function main() {
   }
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main()
+  .catch((e) => { console.error(e); process.exit(1); })
+  .finally(() => sql.end());

@@ -10,13 +10,13 @@
  *
  * Run: npx tsx --env-file .env.local scripts/analysis/backtest.ts
  */
-import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 import { buildLadder, percentileOf, tierFromPercentile, type PercentileTable } from "../../src/lib/calibration";
 import { scoreDay } from "../../src/lib/risk";
 import type { ObsRowExtended, Coverage } from "../../src/lib/hazard";
 import { BEACH_BEARING } from "../../src/lib/similarity";
 
-const sql = neon(process.env.DATABASE_URL!);
+const sql = postgres(process.env.DATABASE_URL!);
 
 // ── Year-block CV configuration ──────────────────────────────────────────────
 
@@ -88,7 +88,7 @@ async function scoreBeach(
   const bearing = BEACH_BEARING[beach.slug] ?? 270;
 
   // Load all observations
-  const allObs = await sql.query(
+  const allObs = await sql.unsafe(
     `SELECT date::text AS date,
             mean_wind_knots, max_gust_knots, wave_height_m, wave_period_s,
             sea_temp_c, rain_mm, mslp_hpa, moon_illum, tide_range_m,
@@ -99,26 +99,26 @@ async function scoreBeach(
      WHERE beach_id = $1 AND date >= '2005-01-01'
      ORDER BY date`,
     [beach.id],
-  ) as Array<ObsRowExtended & { date: string }>;
+  ) as unknown as Array<ObsRowExtended & { date: string }>;
 
   // Load all per-month climatology (used for hazard component normalisation)
-  const climRows = await sql.query(
+  const climRows = await sql.unsafe(
     `SELECT metric, month::int AS month, n, coverage_start, coverage_end, ladder
      FROM climatology
      WHERE beach_id = $1 AND month >= 1 AND month <= 12`,
     [beach.id],
-  ) as Array<{ metric: string; month: number; n: number; coverage_start: unknown; coverage_end: unknown; ladder: unknown }>;
+  ) as unknown as Array<{ metric: string; month: number; n: number; coverage_start: unknown; coverage_end: unknown; ladder: unknown }>;
   const climByMonth = buildClimMap(climRows);
 
   // Load incident dates (condition-related swimmer/shore incidents)
-  const incidentRows = await sql.query(
+  const incidentRows = await sql.unsafe(
     `SELECT DISTINCT date::text AS date
      FROM incidents
      WHERE beach_id = $1
        AND condition_related IS NOT FALSE
        AND activity IN ('swimmer', 'shore')`,
     [beach.id],
-  ) as Array<{ date: string }>;
+  ) as unknown as Array<{ date: string }>;
   const incidentDates = new Set(incidentRows.map((r) => r.date.slice(0, 10)));
 
   const results: ScoredDay[] = [];
@@ -168,7 +168,7 @@ async function scoreBeach(
 }
 
 async function main() {
-  const beaches = await sql`SELECT id, slug FROM beaches ORDER BY id` as Array<{ id: number; slug: string }>;
+  const beaches = await sql`SELECT id, slug FROM beaches ORDER BY id` as unknown as Array<{ id: number; slug: string }>;
 
   let allPass = true;
   const SWEEP_WEIGHTS = [0.0, 0.25, 0.50, 0.65, 0.75, 1.0];
@@ -311,4 +311,6 @@ async function main() {
   process.exit(allPass ? 0 : 1);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main()
+  .catch((e) => { console.error(e); process.exit(1); })
+  .finally(() => sql.end());

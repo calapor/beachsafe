@@ -5,13 +5,13 @@
  *
  * Metrics: all raw observation columns used by hazard components.
  */
-import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 import { buildLadder, type PercentileTable } from "../../src/lib/calibration";
 import { scoreDay } from "../../src/lib/risk";
 import type { ObsRowExtended, Coverage } from "../../src/lib/hazard";
 import { BEACH_BEARING } from "../../src/lib/similarity";
 
-const sql = neon(process.env.DATABASE_URL!);
+const sql = postgres(process.env.DATABASE_URL!);
 
 const METRICS: Array<{ key: string; col: string }> = [
   { key: "wave_height_m",    col: "wave_height_m" },
@@ -29,7 +29,7 @@ const METRICS: Array<{ key: string; col: string }> = [
 async function buildPerMonthClimatology(beachId: number) {
   for (const { key, col } of METRICS) {
     for (let month = 1; month <= 12; month++) {
-      const rows = await sql.query(
+      const rows = await sql.unsafe(
         `SELECT ${col} AS val, date::text AS date
          FROM observations
          WHERE beach_id = $1
@@ -37,7 +37,7 @@ async function buildPerMonthClimatology(beachId: number) {
            AND ${col} IS NOT NULL
          ORDER BY date`,
         [beachId, month]
-      ) as Array<{ val: unknown; date: string }>;
+      ) as unknown as Array<{ val: unknown; date: string }>;
 
       const samples = rows.map((r) => Number(r.val)).filter((v) => isFinite(v));
       const ladder = buildLadder(samples);
@@ -91,7 +91,7 @@ async function buildAnnualScoreLadders(beach: { id: number; slug: string }) {
   console.log(`  Building annual score ladders for ${beach.slug}...`);
 
   // Fetch ALL observations with a 7-day rolling window each
-  const allObsRaw = await sql.query(
+  const allObsRaw = await sql.unsafe(
     `SELECT date::text AS date,
             mean_wind_knots, max_gust_knots, wave_height_m, wave_period_s,
             sea_temp_c, rain_mm, mslp_hpa, moon_illum, tide_range_m,
@@ -102,7 +102,7 @@ async function buildAnnualScoreLadders(beach: { id: number; slug: string }) {
      WHERE beach_id = $1
      ORDER BY date ASC`,
     [beach.id]
-  ) as Array<ObsRowExtended & { date: string }>;
+  ) as unknown as Array<ObsRowExtended & { date: string }>;
 
   if (allObsRaw.length < 100) {
     console.log(`  Skipping annual ladder for ${beach.slug}: only ${allObsRaw.length} observations`);
@@ -110,12 +110,12 @@ async function buildAnnualScoreLadders(beach: { id: number; slug: string }) {
   }
 
   // Pre-load all per-month climatology to avoid N+1 queries in the inner loop
-  const allClimRaw = await sql.query(
+  const allClimRaw = await sql.unsafe(
     `SELECT metric, month::int AS month, n, coverage_start, coverage_end, ladder
      FROM climatology
      WHERE beach_id = $1 AND month >= 1 AND month <= 12`,
     [beach.id]
-  ) as Array<{ metric: string; month: number; n: number; coverage_start: unknown; coverage_end: unknown; ladder: unknown }>;
+  ) as unknown as Array<{ metric: string; month: number; n: number; coverage_start: unknown; coverage_end: unknown; ladder: unknown }>;
   const climByMonth = buildClimMap(allClimRaw);
 
   const bearing = BEACH_BEARING[beach.slug] ?? 270;
@@ -186,7 +186,7 @@ async function buildAnnualScoreLadders(beach: { id: number; slug: string }) {
 }
 
 async function main() {
-  const beaches = await sql`SELECT id, slug FROM beaches ORDER BY id` as Array<{ id: number; slug: string }>;
+  const beaches = await sql`SELECT id, slug FROM beaches ORDER BY id` as unknown as Array<{ id: number; slug: string }>;
 
   // Pass 1: per-month raw metric ladders (must run before pass 2)
   for (const beach of beaches) {
@@ -203,4 +203,6 @@ async function main() {
   console.log("\nClimatology build complete.");
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main()
+  .catch((e) => { console.error(e); process.exit(1); })
+  .finally(() => sql.end());

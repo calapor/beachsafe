@@ -1,6 +1,6 @@
-import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 
-const sql = neon(process.env.DATABASE_URL!);
+const sql = postgres(process.env.DATABASE_URL!);
 
 const BEACHES = [
   { slug: "fountainstown", lat: 51.7833, lon: -8.2667 },
@@ -259,4 +259,6 @@ async function main() {
   console.log("RNLI ingest complete.");
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main()
+  .catch((e) => { console.error(e); process.exit(1); })
+  .finally(() => sql.end());

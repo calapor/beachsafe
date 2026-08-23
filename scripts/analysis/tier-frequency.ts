@@ -10,10 +10,10 @@
  *
  * Compare against old baseline (92.4 / 75.6 / 99.8% severe from the fingerprint path).
  */
-import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 import { tierFromPercentile, percentileOf, type PercentileTable } from "../../src/lib/calibration";
 
-const sql = neon(process.env.DATABASE_URL!);
+const sql = postgres(process.env.DATABASE_URL!);
 
 // Combine several metrics into a single hazard proxy for the replay.
 // This mirrors the hazard index: average the non-null percentiles.
@@ -128,4 +128,6 @@ async function main() {
   process.exit(allPass ? 0 : 1);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main()
+  .catch((e) => { console.error(e); process.exit(1); })
+  .finally(() => sql.end());

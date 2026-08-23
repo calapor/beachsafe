@@ -6,9 +6,9 @@
  * Run once before ingest-waves.ts to populate the offshore probe points.
  * Rate-limited to ~1 req/sec.
  */
-import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 
-const sql = neon(process.env.DATABASE_URL!);
+const sql = postgres(process.env.DATABASE_URL!);
 
 // Seaward bearing (degrees true) and step sizes to probe for each beach.
 // Walking in the seaward direction minimises risk of hitting land first.
@@ -85,4 +85,6 @@ async function main() {
   console.log("\nProbe complete.");
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main()
+  .catch((e) => { console.error(e); process.exit(1); })
+  .finally(() => sql.end());

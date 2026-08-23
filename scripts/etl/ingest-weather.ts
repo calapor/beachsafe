@@ -1,6 +1,6 @@
-import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 
-const sql = neon(process.env.DATABASE_URL!);
+const sql = postgres(process.env.DATABASE_URL!);
 
 const BEACHES = [
   { slug: "fountainstown", lat: 51.7833, lon: -8.2667 },
@@ -131,7 +131,7 @@ export async function ingestWeatherForBeach(beachId: number, lat: number, lon: n
       p += COL_COUNT;
     }
 
-    await sql.query(
+    await sql.unsafe(
       `INSERT INTO observations
          (beach_id, date, rain_mm, temp_max_c, temp_min_c,
           max_gust_knots, wind_dir_deg, mean_wind_knots, mslp_hpa, source_flags)
@@ -145,7 +145,7 @@ export async function ingestWeatherForBeach(beachId: number, lat: number, lon: n
          mean_wind_knots = EXCLUDED.mean_wind_knots,
          mslp_hpa        = EXCLUDED.mslp_hpa,
          source_flags    = COALESCE(observations.source_flags, '{}'::jsonb) || EXCLUDED.source_flags`,
-      vals
+      vals as Parameters<typeof sql.unsafe>[1]
     );
   }
   console.log(`  Done: ${days.length} weather rows for beach ${beachId}`);
@@ -162,4 +162,6 @@ async function main() {
   }
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main()
+  .catch((e) => { console.error(e); process.exit(1); })
+  .finally(() => sql.end());

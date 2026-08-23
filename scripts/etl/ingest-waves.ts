@@ -7,9 +7,9 @@
  *          wind_wave_height_max (plus sea_surface_temperature for SST).
  * Falls back to the IWBNetwork buoy for sea temperature where Open-Meteo lacks it.
  */
-import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 
-const sql = neon(process.env.DATABASE_URL!);
+const sql = postgres(process.env.DATABASE_URL!);
 
 // IWBNetwork buoy → beach mapping for sea temperature fallback
 const BUOY_FOR_SLUG: Record<string, string> = {
@@ -178,4 +178,6 @@ async function main() {
   console.log("Wave ingest complete.");
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main()
+  .catch((e) => { console.error(e); process.exit(1); })
+  .finally(() => sql.end());

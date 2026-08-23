@@ -56,7 +56,7 @@ spec:
 
   parameters {
     booleanParam(name: 'DEPLOY_ONLY', defaultValue: false, description: 'Skip build — re-deploy the existing image tag')
-    booleanParam(name: 'RESEED', defaultValue: false, description: 'Re-run migrate + seed against Neon DB. Only needed when incident JSON files have changed.')
+    booleanParam(name: 'RESEED', defaultValue: false, description: 'Re-run migrate + seed against platform DB. Only needed when incident JSON files have changed.')
     string(name: 'IMAGE_TAG_OVERRIDE', defaultValue: '', description: 'Override image tag (leave blank to use git SHA)')
   }
 
@@ -117,8 +117,8 @@ spec:
       }
       steps {
         container('node') {
-          // Credential ID 'flags-database-url' must exist in Jenkins credential store
-          withCredentials([string(credentialsId: 'flags-database-url', variable: 'DATABASE_URL')]) {
+          // Credential ID 'beachsafe-database-url' must exist in Jenkins credential store
+          withCredentials([string(credentialsId: 'beachsafe-database-url', variable: 'DATABASE_URL')]) {
             sh 'DATABASE_URL="${DATABASE_URL}" pnpm exec tsx scripts/migrate.ts'
             sh 'DATABASE_URL="${DATABASE_URL}" pnpm exec tsx scripts/etl/run-all.ts --skip-weather --skip-waves --skip-tides --skip-rnli --skip-enrich'
           }
@@ -149,8 +149,8 @@ spec:
       steps {
         container('helm') {
           withCredentials([
-            // Credential IDs 'flags-database-url' and 'anthropic-api-key' must exist in Jenkins credential store
-            string(credentialsId: 'flags-database-url',    variable: 'DATABASE_URL'),
+            // Credential IDs 'beachsafe-database-url' and 'anthropic-api-key' must exist in Jenkins credential store
+            string(credentialsId: 'beachsafe-database-url',    variable: 'DATABASE_URL'),
             string(credentialsId: 'anthropic-api-key', variable: 'ANTHROPIC_KEY'),
           ]) {
             sh """

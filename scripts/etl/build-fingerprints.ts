@@ -1,8 +1,8 @@
-import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 import { getTimes } from "suncalc";
 import { fingerprint, type ObsRow } from "../../src/lib/similarity";
 
-const sql = neon(process.env.DATABASE_URL!);
+const sql = postgres(process.env.DATABASE_URL!);
 
 const BEACH_BEARING: Record<string, number> = {
   fountainstown: 135,
@@ -72,9 +72,9 @@ async function main() {
 
   console.log(`Fingerprinting ${incidents.length} condition-related incidents...`);
 
-  for (const inc of incidents as Array<{ id: number; beach_id: number; date: string; slug: string; time_of_day: string | null }>) {
-    const isoDate = inc.date instanceof Date
-      ? inc.date.toISOString().slice(0, 10)
+  for (const inc of incidents as unknown as Array<{ id: number; beach_id: number; date: string; slug: string; time_of_day: string | null }>) {
+    const isoDate = (inc.date as unknown) instanceof Date
+      ? (inc.date as unknown as Date).toISOString().slice(0, 10)
       : String(inc.date).slice(0, 10);
 
     const window = await sql`
@@ -129,4 +129,6 @@ async function main() {
   console.log("Fingerprint build complete.");
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main()
+  .catch((e) => { console.error(e); process.exit(1); })
+  .finally(() => sql.end());

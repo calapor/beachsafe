@@ -1,8 +1,8 @@
-import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 import { getMoonIllumination } from "suncalc";
 import { parseISO } from "date-fns";
 
-const sql = neon(process.env.DATABASE_URL!);
+const sql = postgres(process.env.DATABASE_URL!);
 
 const CHUNK_SIZE = 500;
 
@@ -33,7 +33,7 @@ export async function computeAstroForBeach(beachId: number, slug: string) {
     SELECT date FROM observations
     WHERE beach_id = ${beachId}
       AND (moon_phase IS NULL OR moon_illum IS NULL)
-  ` as Array<{ date: string | Date }>;
+  ` as unknown as Array<{ date: string | Date }>;
 
   if (!rows.length) {
     console.log(`  No missing astro rows for beach ${slug}`);
@@ -93,10 +93,12 @@ export async function computeAstroForBeach(beachId: number, slug: string) {
 
 async function main() {
   const beaches = await sql`SELECT id, slug FROM beaches`;
-  for (const beach of beaches as Array<{ id: number; slug: string }>) {
+  for (const beach of beaches as unknown as Array<{ id: number; slug: string }>) {
     await computeAstroForBeach(beach.id, beach.slug);
   }
   console.log("Astro computation complete.");
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main()
+  .catch((e) => { console.error(e); process.exit(1); })
+  .finally(() => sql.end());

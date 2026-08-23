@@ -11,10 +11,10 @@
  * Results are upserted into feature_discrimination.
  * Power note: at n=51 the minimum detectable AUC is ≈0.64.
  */
-import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 import { upsertFeatureDiscrimination } from "../../src/db/queries";
 
-const sql = neon(process.env.DATABASE_URL!);
+const sql = postgres(process.env.DATABASE_URL!);
 
 interface ObsRecord {
   beach_id: number;
@@ -179,4 +179,6 @@ async function main() {
   console.log("\nResults written to feature_discrimination table.");
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main()
+  .catch((e) => { console.error(e); process.exit(1); })
+  .finally(() => sql.end());

@@ -1,6 +1,6 @@
-import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 
-const sql = neon(process.env.DATABASE_URL!);
+const sql = postgres(process.env.DATABASE_URL!);
 
 // Correct station names from IrishNationalTideGaugeNetwork (verified 2026-07).
 // Skerries Harbour is an exact geographic match for Skerries beach.
@@ -190,4 +190,6 @@ async function main() {
   console.log("Tide ingest complete.");
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main()
+  .catch((e) => { console.error(e); process.exit(1); })
+  .finally(() => sql.end());

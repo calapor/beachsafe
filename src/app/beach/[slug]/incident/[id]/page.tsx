@@ -98,7 +98,7 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
   const incidentId = parseInt(id, 10);
   if (isNaN(incidentId)) notFound();
 
-  const incident = await getIncidentById(incidentId) as {
+  const incident = await getIncidentById(incidentId) as unknown as {
     id: number; beach_id: number; date: string; type: string; severity: number; casualties: number;
     title: string; description: string; source_url: string; source_type: string;
     features: unknown; beach_slug: string; beach_name: string; lat: number; lon: number;
@@ -107,8 +107,8 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
   } | null;
   if (!incident) notFound();
 
-  const isoDate = incident.date instanceof Date
-    ? incident.date.toISOString().slice(0, 10)
+  const isoDate = (incident.date as unknown) instanceof Date
+    ? (incident.date as unknown as Date).toISOString().slice(0, 10)
     : String(incident.date).slice(0, 10);
   const bearing = BEACH_BEARING[incident.beach_slug] ?? 270;
   const timeLabel = incident.time_of_day ? String(incident.time_of_day).slice(0, 5) : null;
@@ -117,7 +117,7 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
     getObservationWindow(incident.beach_id, isoDate, 8),
     getAllFingerprints(incident.beach_id),
     getAnnualObservations(incident.beach_id),
-    getAnnualClimatology(incident.beach_id) as Promise<Array<{
+    getAnnualClimatology(incident.beach_id) as unknown as Promise<Array<{
       metric: string; n: number; coverage_start: unknown; coverage_end: unknown; ladder: unknown;
     }>>,
   ]);
@@ -133,7 +133,7 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
     );
   } catch (e) { console.error("[RetroHazard]", e); }
 
-  const annualObs = (annualObsRaw as Array<{
+  const annualObs = (annualObsRaw as unknown as Array<{
     date: string;
     wave_height_m?: number | null;
     moon_illum?: number | null;
@@ -141,7 +141,7 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
     max_gust_knots?: number | null;
   }>);
 
-  const obs7 = window7 as Array<{
+  const obs7 = window7 as unknown as Array<{
     date: string; mean_wind_knots?: number | null; max_gust_knots?: number | null;
     wave_height_m?: number | null; wave_period_s?: number | null; rain_mm?: number | null;
     mslp_hpa?: number | null; moon_illum?: number | null; tide_range_m?: number | null;
@@ -149,7 +149,7 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
     high_tide_times?: string | null; low_tide_times?: string | null;
   }>;
 
-  const dayOf = obs7.find((r) => (r.date instanceof Date ? r.date.toISOString() : String(r.date)).slice(0, 10) === isoDate) ?? obs7[obs7.length - 1];
+  const dayOf = obs7.find((r) => ((r.date as unknown) instanceof Date ? (r.date as unknown as Date).toISOString() : String(r.date)).slice(0, 10) === isoDate) ?? obs7[obs7.length - 1];
 
   // Use stored fingerprint if available; recompute with time opts if not.
   const storedFeatures = incident.features as FeatureVector | null;
@@ -160,17 +160,17 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
   });
 
   // Baseline from all beach fingerprints
-  const allFpsMapped = (allFps as Array<{ incident_id: number; date: string; title: string; type: string; severity: number; features: unknown }>)
+  const allFpsMapped = (allFps as unknown as Array<{ incident_id: number; date: string; title: string; type: string; severity: number; features: unknown }>)
     .map((fp) => ({ features: fp.features as FeatureVector }));
   const baseline = computeBaseline(allFpsMapped);
   const contrast = baselineContrast(fv, baseline);
 
   // Similar incidents
-  const fps = (allFps as Array<{ incident_id: number; date: string; title: string; type: string; severity: number; features: unknown }>)
+  const fps = (allFps as unknown as Array<{ incident_id: number; date: string; title: string; type: string; severity: number; features: unknown }>)
     .filter((fp) => fp.incident_id !== incidentId)
     .map((fp) => ({
       incidentId: fp.incident_id,
-      date: (fp.date instanceof Date ? fp.date.toISOString() : String(fp.date)).slice(0, 10),
+      date: ((fp.date as unknown) instanceof Date ? (fp.date as unknown as Date).toISOString() : String(fp.date)).slice(0, 10),
       title: fp.title,
       type: fp.type,
       severity: fp.severity,
@@ -179,7 +179,7 @@ export default async function IncidentPage({ params }: { params: Promise<{ slug:
   const similar = matchAll(fv, fps).slice(0, 5);
 
   const chartData = obs7.map((r) => ({
-    date: (r.date instanceof Date ? r.date.toISOString() : String(r.date)).slice(0, 10),
+    date: ((r.date as unknown) instanceof Date ? (r.date as unknown as Date).toISOString() : String(r.date)).slice(0, 10),
     wind: r.mean_wind_knots ?? null,
     wave: r.wave_height_m ?? null,
     rain: r.rain_mm ?? null,

@@ -1,14 +1,14 @@
-import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 
-const sql = neon(process.env.DATABASE_URL!);
+const sql = postgres(process.env.DATABASE_URL!);
 
 async function main() {
   const schema = readFileSync(resolve(__dirname, "../src/db/schema.sql"), "utf8");
   const statements = schema.split(";").map((s) => s.trim()).filter(Boolean);
   for (const stmt of statements) {
-    await sql.query(stmt);
+    await sql.unsafe(stmt);
   }
   console.log("Schema applied.");
 
@@ -22,25 +22,25 @@ async function main() {
   `;
   console.log("Beaches seeded.");
 
-  await sql.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS external_id TEXT`);
-  await sql.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS time_of_day TIME`);
-  await sql.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS time_source TEXT CHECK (time_source IN ('rnli','reported','unknown')) DEFAULT 'unknown'`);
-  await sql.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS activity TEXT CHECK (activity IN ('swimmer','watercraft','shore','other','unknown')) DEFAULT 'unknown'`);
-  await sql.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS activity_source TEXT`);
-  await sql.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS condition_related BOOLEAN`);
-  await sql.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS exclusion_cause TEXT`);
-  await sql.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS activity_evidence TEXT`);
+  await sql.unsafe(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS external_id TEXT`);
+  await sql.unsafe(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS time_of_day TIME`);
+  await sql.unsafe(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS time_source TEXT CHECK (time_source IN ('rnli','reported','unknown')) DEFAULT 'unknown'`);
+  await sql.unsafe(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS activity TEXT CHECK (activity IN ('swimmer','watercraft','shore','other','unknown')) DEFAULT 'unknown'`);
+  await sql.unsafe(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS activity_source TEXT`);
+  await sql.unsafe(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS condition_related BOOLEAN`);
+  await sql.unsafe(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS exclusion_cause TEXT`);
+  await sql.unsafe(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS activity_evidence TEXT`);
 
   // Beach-specific offshore wave point (probe-wave-points.ts writes these)
-  await sql.query(`ALTER TABLE beaches ADD COLUMN IF NOT EXISTS wave_lat DOUBLE PRECISION`);
-  await sql.query(`ALTER TABLE beaches ADD COLUMN IF NOT EXISTS wave_lon DOUBLE PRECISION`);
+  await sql.unsafe(`ALTER TABLE beaches ADD COLUMN IF NOT EXISTS wave_lat DOUBLE PRECISION`);
+  await sql.unsafe(`ALTER TABLE beaches ADD COLUMN IF NOT EXISTS wave_lon DOUBLE PRECISION`);
 
   // Swell and wind-wave components from Open-Meteo marine (ingest-waves.ts v2)
-  await sql.query(`ALTER TABLE observations ADD COLUMN IF NOT EXISTS swell_height_m REAL`);
-  await sql.query(`ALTER TABLE observations ADD COLUMN IF NOT EXISTS swell_period_s REAL`);
-  await sql.query(`ALTER TABLE observations ADD COLUMN IF NOT EXISTS wind_wave_height_m REAL`);
+  await sql.unsafe(`ALTER TABLE observations ADD COLUMN IF NOT EXISTS swell_height_m REAL`);
+  await sql.unsafe(`ALTER TABLE observations ADD COLUMN IF NOT EXISTS swell_period_s REAL`);
+  await sql.unsafe(`ALTER TABLE observations ADD COLUMN IF NOT EXISTS wind_wave_height_m REAL`);
   // Deduplicate before creating the index (keeps the row with the lowest id per external_id)
-  await sql.query(`
+  await sql.unsafe(`
     DELETE FROM incident_fingerprints
     WHERE incident_id IN (
       SELECT id FROM incidents
@@ -48,15 +48,17 @@ async function main() {
         AND id NOT IN (SELECT MIN(id) FROM incidents WHERE external_id IS NOT NULL GROUP BY external_id)
     )
   `);
-  await sql.query(`
+  await sql.unsafe(`
     DELETE FROM incidents
     WHERE external_id IS NOT NULL
       AND id NOT IN (SELECT MIN(id) FROM incidents WHERE external_id IS NOT NULL GROUP BY external_id)
   `);
   // Drop and recreate to ensure it's a non-partial index (earlier versions created it as partial)
-  await sql.query(`DROP INDEX IF EXISTS incidents_external_id`);
-  await sql.query(`CREATE UNIQUE INDEX incidents_external_id ON incidents(external_id)`);
+  await sql.unsafe(`DROP INDEX IF EXISTS incidents_external_id`);
+  await sql.unsafe(`CREATE UNIQUE INDEX incidents_external_id ON incidents(external_id)`);
   console.log("Schema migrations applied.");
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main()
+  .catch((e) => { console.error(e); process.exit(1); })
+  .finally(() => sql.end());
