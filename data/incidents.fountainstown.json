@@ -28,5 +28,36 @@
     "description": "Swimmer caught in rip at the north end of the cove. Calm day, neap tide, little swell — typical deceptive rip conditions. Lifeguard intervention.",
     "source_url": "https://www.rnli.org/news-and-updates/",
     "source_type": "rnli"
+  },
+  {
+    "date": "2023-09-05",
+    "type": "drowning",
+    "severity": 5,
+    "casualties": 1,
+    "title": "Girl (7) drowns at Fountainstown Beach",
+    "description": "Alarm raised at approximately 4:45pm after a young girl got into difficulty in the water at Fountainstown Beach. One witness described the sea as 'quite choppy.' An extensive three-hour search involving the Shannon Coast Guard helicopter, Crosshaven RNLI, Crosshaven Coast Guard, Ballycotton lifeboat, Gardaí, fire services, customs, and Mallow River Rescue was conducted. The girl's body was spotted in the surf line at approximately 7:45pm. She was two days short of her 8th birthday.",
+    "source_url": "https://www.irishtimes.com/ireland/2023/09/06/girl-7-who-drowned-while-swimming-at-fountainstown-beach-in-co-cork-named/",
+    "source_type": "news",
+    "time_of_day": "16:45",
+    "time_source": "reported",
+    "activity": "swimmer",
+    "activity_source": "news",
+    "condition_related": true
+  },
+  {
+    "date": "2026-03-02",
+    "type": "rnli_launch",
+    "severity": 1,
+    "casualties": 0,
+    "title": "Crosshaven RNLI tasked to possible person in water — false alarm",
+    "description": "At 5:13pm, Crosshaven RNLI received a dispatch from the Irish Coast Guard to a report of a possible body sighted in the water near Fountainstown. Volunteers launched their inshore lifeboat at 5:25pm and conducted a comprehensive area search in conjunction with Crosshaven Coast Guard in good conditions. After a thorough search with nothing found, the crew were stood down. The lifeboat was recovered, cleaned, refuelled and ready for service by 7pm.",
+    "source_url": "https://www.irishlifeboats.com/post/crosshaven-rnli-lifeboat-launch-to-possible-person-in-water",
+    "source_type": "news",
+    "time_of_day": "17:13",
+    "time_source": "reported",
+    "activity": "unknown",
+    "activity_source": "news",
+    "condition_related": false,
+    "exclusion_cause": "false_alarm"
   }
 ]

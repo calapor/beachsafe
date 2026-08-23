@@ -109,18 +109,14 @@ spec:
     }
 
     stage('Seed DB') {
-      when {
-        anyOf {
-          expression { params.RESEED }
-          expression { currentBuild.number == 1 }
-        }
-      }
       steps {
         container('node') {
           // Credential ID 'beachsafe-database-url' must exist in Jenkins credential store
+          // and MUST point at platform-db — the guard below fails the build if it's Neon.
           withCredentials([string(credentialsId: 'beachsafe-database-url', variable: 'DATABASE_URL')]) {
+            sh 'DATABASE_URL="${DATABASE_URL}" pnpm exec tsx scripts/check-db-url.ts'
             sh 'DATABASE_URL="${DATABASE_URL}" pnpm exec tsx scripts/migrate.ts'
-            sh 'DATABASE_URL="${DATABASE_URL}" pnpm exec tsx scripts/etl/run-all.ts --skip-weather --skip-waves --skip-tides --skip-rnli --skip-enrich'
+            sh 'DATABASE_URL="${DATABASE_URL}" pnpm exec tsx scripts/etl/run-all.ts --skip-weather --skip-waves --skip-tides'
           }
         }
       }
@@ -147,6 +143,13 @@ spec:
 
     stage('Deploy') {
       steps {
+        container('node') {
+          withCredentials([
+            string(credentialsId: 'beachsafe-database-url', variable: 'DATABASE_URL'),
+          ]) {
+            sh 'DATABASE_URL="${DATABASE_URL}" pnpm exec tsx scripts/check-db-url.ts'
+          }
+        }
         container('helm') {
           withCredentials([
             // Credential IDs 'beachsafe-database-url' and 'anthropic-api-key' must exist in Jenkins credential store
