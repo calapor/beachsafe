@@ -177,7 +177,9 @@ async function ingestRnliForBeach(beachId: number, lat: number, lon: number) {
     const titles        = chunk.map(r => `RNLI ${r.station} launch (${r.externalId})`);
     const descriptions  = chunk.map(r => [r.reason, r.outcome].filter(Boolean).join(" — ") || null);
     const externalIds   = chunk.map(r => r.externalId);
-    const condRelateds  = chunk.map(r => r.conditionRelated);
+    // Serialize boolean|null as text so the driver never sends a null-typed array
+    // that PostgreSQL can't cast to boolean[]. PostgreSQL casts 'true'/'false' fine.
+    const condRelateds  = chunk.map(r => r.conditionRelated === null ? null : String(r.conditionRelated));
     const exclCauses    = chunk.map(r => r.exclusionCause);
 
     await sql`
@@ -198,7 +200,7 @@ async function ingestRnliForBeach(beachId: number, lat: number, lon: number) {
         ${titles}::text[],
         ${descriptions}::text[],
         ${externalIds}::text[],
-        ${condRelateds}::boolean[],
+        ${condRelateds}::text[],
         ${exclCauses}::text[]
       ) AS t(b, d, t, ts, ti, de, ei, cr, ec)
       ON CONFLICT (beach_id, date, title) DO UPDATE SET
@@ -216,7 +218,7 @@ async function ingestRnliForBeach(beachId: number, lat: number, lon: number) {
     const ids           = chunk.map(r => existingMap.get(r.externalId)!);
     const timeOfDays    = chunk.map(r => r.timeOfDay);
     const timeSources   = chunk.map(r => r.timeSource);
-    const condRelateds  = chunk.map(r => r.conditionRelated);
+    const condRelateds  = chunk.map(r => r.conditionRelated === null ? null : String(r.conditionRelated));
     const exclCauses    = chunk.map(r => r.exclusionCause);
 
     await sql`
@@ -229,7 +231,7 @@ async function ingestRnliForBeach(beachId: number, lat: number, lon: number) {
         ${ids}::integer[],
         ${timeOfDays}::text[],
         ${timeSources}::text[],
-        ${condRelateds}::boolean[],
+        ${condRelateds}::text[],
         ${exclCauses}::text[]
       ) AS u(uid, t, ts, cr, ec)
       WHERE incidents.id = u.uid
