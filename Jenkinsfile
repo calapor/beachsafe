@@ -113,10 +113,13 @@ spec:
         container('node') {
           // Credential ID 'beachsafe-database-url' must exist in Jenkins credential store
           // and MUST point at platform-db — the guard below fails the build if it's Neon.
-          withCredentials([string(credentialsId: 'beachsafe-database-url', variable: 'DATABASE_URL')]) {
+          withCredentials([
+            string(credentialsId: 'beachsafe-database-url', variable: 'DATABASE_URL'),
+            string(credentialsId: 'anthropic-api-key',      variable: 'ANTHROPIC_KEY'),
+          ]) {
             sh 'DATABASE_URL="${DATABASE_URL}" pnpm exec tsx scripts/check-db-url.ts'
             sh 'DATABASE_URL="${DATABASE_URL}" pnpm exec tsx scripts/migrate.ts'
-            sh 'DATABASE_URL="${DATABASE_URL}" pnpm exec tsx scripts/etl/run-all.ts --skip-weather --skip-waves --skip-tides'
+            sh 'DATABASE_URL="${DATABASE_URL}" ANTHROPIC_API_KEY="${ANTHROPIC_KEY}" pnpm exec tsx scripts/etl/run-all.ts --skip-weather --skip-waves --skip-tides'
           }
         }
       }
